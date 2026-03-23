@@ -1,13 +1,12 @@
 export class DataManager {
     constructor() {
-        this.storageKey = 'colormatch_history';
+        this.storageKey = 'alpha_color_match_history';
     }
     
     saveToHistory(item) {
         const history = this.getHistory();
         history.unshift(item);
         
-        // Mantener solo los últimos 50 registros
         if (history.length > 50) history.pop();
         
         localStorage.setItem(this.storageKey, JSON.stringify(history));
@@ -23,11 +22,11 @@ export class DataManager {
     }
     
     saveReferenceData(data) {
-        localStorage.setItem('colormatch_reference', JSON.stringify(data));
+        localStorage.setItem('alpha_color_match_reference', JSON.stringify(data));
     }
     
     getReferenceData() {
-        const stored = localStorage.getItem('colormatch_reference');
+        const stored = localStorage.getItem('alpha_color_match_reference');
         return stored ? JSON.parse(stored) : [];
     }
 }
