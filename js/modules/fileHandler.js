@@ -16,7 +16,6 @@ export class FileHandler {
         const lines = content.split(/\r?\n/);
         let dataStarted = false;
         const records = [];
-        let autoId = 1;
         
         for (let line of lines) {
             if (line.trim() === 'BEGIN_DATA') {
@@ -27,7 +26,6 @@ export class FileHandler {
             if (!dataStarted) continue;
             if (line.trim() === '') continue;
             
-            // Patrón: número "nombre" c m y k l a b
             const match = line.match(/^(\d+)\s+"([^"]+)"\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)/);
             
             if (match) {
@@ -38,7 +36,6 @@ export class FileHandler {
                     lab: [parseFloat(match[7]), parseFloat(match[8]), parseFloat(match[9])]
                 });
             } else {
-                // Intentar formato sin comillas
                 const simpleMatch = line.match(/^(\d+)\s+([^\s]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)/);
                 if (simpleMatch) {
                     records.push({
@@ -56,7 +53,7 @@ export class FileHandler {
     
     generateExportContent(results) {
         let content = 'CGATS.17\n';
-        content += 'ORIGINATOR\t"ColorMatch Pro"\n';
+        content += 'ORIGINATOR\t"ALPHA COLOR MATCH"\n';
         content += `CREATED\t"${new Date().toLocaleDateString()}"\n`;
         content += 'NUMBER_OF_FIELDS\t9\n';
         content += 'BEGIN_DATA_FORMAT\n';
@@ -66,9 +63,11 @@ export class FileHandler {
         content += 'BEGIN_DATA\n\n';
         
         results.forEach(item => {
+            const cmyk = item.cmykPrimary || item.cmykSecondary;
+            const lab = item.labPrimary || item.labSecondary;
             content += `${item.id} "${item.name}" `;
-            content += `${item.cmyk[0].toFixed(6)} ${item.cmyk[1].toFixed(6)} ${item.cmyk[2].toFixed(6)} ${item.cmyk[3].toFixed(6)} `;
-            content += `${item.lab[0].toFixed(6)} ${item.lab[1].toFixed(6)} ${item.lab[2].toFixed(6)}\n`;
+            content += `${cmyk[0].toFixed(6)} ${cmyk[1].toFixed(6)} ${cmyk[2].toFixed(6)} ${cmyk[3].toFixed(6)} `;
+            content += `${lab[0].toFixed(6)} ${lab[1].toFixed(6)} ${lab[2].toFixed(6)}\n`;
         });
         
         content += '\nEND_DATA\n';
@@ -77,7 +76,7 @@ export class FileHandler {
     
     generateTxtFromData(data) {
         let content = 'CGATS.17\n';
-        content += 'ORIGINATOR\t"ColorMatch Pro"\n';
+        content += 'ORIGINATOR\t"ALPHA COLOR MATCH"\n';
         content += `CREATED\t"${new Date().toLocaleDateString()}"\n`;
         content += 'NUMBER_OF_FIELDS\t9\n';
         content += 'BEGIN_DATA_FORMAT\n';
