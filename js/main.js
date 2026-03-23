@@ -14,7 +14,7 @@ class AlphaColorMatch {
         this.secondaryData = [];
         this.comparisonResults = [];
         this.currentFilter = 'all';
-        this.actionHistory = []; // Historial de acciones para deshacer
+        this.actionHistory = [];
         this.actionCounter = 0;
         
         this.init();
@@ -25,13 +25,12 @@ class AlphaColorMatch {
         this.loadHistory();
         this.uiRenderer.initCreatorTable();
         
-        // Exponer métodos al window para los botones
+        // ✅ CORRECCIÓN: Asignar métodos correctamente SIN crear recursión
+        // Simplemente asignamos la referencia al objeto app, no creamos nuevas funciones
         window.app = this;
-        window.app.showReplaceConfirm = (colorId) => this.showReplaceConfirm(colorId);
-        window.app.showKeepConfirm = (colorId) => this.showKeepConfirm(colorId);
-        window.app.showAddConfirm = (colorId) => this.showAddConfirm(colorId);
-        window.app.showUndoDialog = (colorId, actionType) => this.showUndoDialog(colorId, actionType);
-        window.app.undoLastAction = (actionId) => this.undoLastAction(actionId);
+        
+        // ✅ Los métodos ya están disponibles directamente en window.app
+        // No necesitas reasignarlos, ya que this ya tiene estos métodos
     }
     
     bindEvents() {
@@ -106,21 +105,15 @@ class AlphaColorMatch {
             return;
         }
         
-        // Limpiar acciones previas al hacer nueva comparación
         this.actionHistory = [];
         this.actionCounter = 0;
         
-        // Comparación inteligente - SOLO CMYK
         this.comparisonResults = this.colorMatcher.smartCompare(this.primaryData, this.secondaryData);
         
-        // Actualizar estadísticas
         const stats = this.colorMatcher.getComparisonStats(this.comparisonResults);
         this.updateStats(stats);
         
-        // Guardar en historial
         this.saveToHistory(stats);
-        
-        // Renderizar resultados
         this.filterResults();
         
         this.uiRenderer.showToast(`🔍 Comparación completada: ${stats.differences} diferencias encontradas, ${stats.missing} colores no encontrados`, 'info');
@@ -154,7 +147,7 @@ class AlphaColorMatch {
         this.uiRenderer.renderComparisonTable(filtered, this);
     }
     
-    // Mostrar confirmación para reemplazar
+    // ✅ MÉTODOS PARA ACCIONES - Ahora correctamente definidos
     showReplaceConfirm(colorId) {
         const color = this.comparisonResults.find(c => c.id === colorId);
         if (!color) return;
@@ -164,7 +157,6 @@ class AlphaColorMatch {
         });
     }
     
-    // Mostrar confirmación para mantener
     showKeepConfirm(colorId) {
         const color = this.comparisonResults.find(c => c.id === colorId);
         if (!color) return;
@@ -174,7 +166,6 @@ class AlphaColorMatch {
         });
     }
     
-    // Mostrar confirmación para agregar
     showAddConfirm(colorId) {
         const color = this.comparisonResults.find(c => c.id === colorId);
         if (!color) return;
@@ -184,14 +175,12 @@ class AlphaColorMatch {
         });
     }
     
-    // Mostrar diálogo para deshacer
     showUndoDialog(colorId, actionType) {
         this.uiRenderer.showUndoModal(colorId, actionType, (reason) => {
             this.undoAction(colorId, actionType, reason);
         });
     }
     
-    // Reemplazar color
     replaceColor(item, reason = '') {
         const index = this.primaryData.findIndex(p => 
             p.id === item.id || 
@@ -199,7 +188,6 @@ class AlphaColorMatch {
         );
         
         if (index !== -1) {
-            // Guardar estado anterior para poder deshacer
             const previousState = {
                 id: item.id,
                 name: item.name,
@@ -207,7 +195,6 @@ class AlphaColorMatch {
                 lab: [...this.primaryData[index].lab]
             };
             
-            // Guardar en historial de acciones
             const actionId = `action_${this.actionCounter++}`;
             this.actionHistory.push({
                 id: actionId,
@@ -219,7 +206,6 @@ class AlphaColorMatch {
                 reason: reason
             });
             
-            // Actualizar datos
             this.primaryData[index] = {
                 id: item.id,
                 name: item.name,
@@ -227,24 +213,19 @@ class AlphaColorMatch {
                 lab: item.labSecondary ? [...item.labSecondary] : (item.labPrimary || [0, 0, 0])
             };
             
-            // Marcar en resultados que se tomó acción
             const resultItem = this.comparisonResults.find(r => r.id === item.id);
             if (resultItem) {
                 resultItem.actionTaken = 'replace';
             }
             
             this.compareFiles();
-            
-            // Guardar en historial de acciones del usuario
             this.saveActionToHistory('replace', item.id, item.name, reason);
             
-            this.uiRenderer.showToast(`🔄 Color "${item.name}" reemplazado con valores del secundario. ID acción: ${actionId}`, 'success');
+            this.uiRenderer.showToast(`🔄 Color "${item.name}" reemplazado con valores del secundario`, 'success');
         }
     }
     
-    // Mantener color actual (sin cambios)
     keepColor(item, reason = '') {
-        // Guardar en historial de acciones
         const actionId = `action_${this.actionCounter++}`;
         this.actionHistory.push({
             id: actionId,
@@ -256,21 +237,17 @@ class AlphaColorMatch {
             reason: reason
         });
         
-        // Marcar en resultados que se tomó acción
         const resultItem = this.comparisonResults.find(r => r.id === item.id);
         if (resultItem) {
             resultItem.actionTaken = 'keep';
         }
         
-        this.filterResults(); // Solo refrescar la vista
-        
-        // Guardar en historial de acciones del usuario
+        this.filterResults();
         this.saveActionToHistory('keep', item.id, item.name, reason);
         
         this.uiRenderer.showToast(`💾 Valor principal mantenido para "${item.name}". Puedes deshacer si fue un error.`, 'undo');
     }
     
-    // Agregar color faltante
     addMissingColor(item, reason = '') {
         const newColor = {
             id: item.id,
@@ -279,7 +256,6 @@ class AlphaColorMatch {
             lab: item.labSecondary ? [...item.labSecondary] : [0, 0, 0]
         };
         
-        // Guardar acción para deshacer
         const actionId = `action_${this.actionCounter++}`;
         this.actionHistory.push({
             id: actionId,
@@ -294,21 +270,17 @@ class AlphaColorMatch {
         
         this.primaryData.push(newColor);
         
-        // Marcar en resultados
         const resultItem = this.comparisonResults.find(r => r.id === item.id);
         if (resultItem) {
             resultItem.actionTaken = 'add';
         }
         
         this.compareFiles();
-        
-        // Guardar en historial
         this.saveActionToHistory('add', item.id, item.name, reason);
         
-        this.uiRenderer.showToast(`✅ Color "${item.name}" agregado a la referencia principal. ID acción: ${actionId}`, 'success');
+        this.uiRenderer.showToast(`✅ Color "${item.name}" agregado a la referencia principal`, 'success');
     }
     
-    // Deshacer acción
     undoAction(colorId, actionType, reason = '') {
         const action = this.actionHistory.find(a => a.colorId === colorId && a.type === actionType);
         
@@ -318,7 +290,6 @@ class AlphaColorMatch {
         }
         
         if (action.type === 'replace' && action.previousState) {
-            // Restaurar estado anterior
             const index = this.primaryData.findIndex(p => p.id === colorId);
             if (index !== -1) {
                 this.primaryData[index] = {
@@ -329,14 +300,11 @@ class AlphaColorMatch {
                 };
             }
         } else if (action.type === 'keep') {
-            // Para keep, no hay cambios que revertir en datos, solo en UI
-            // Eliminar la marca de acción
             const resultItem = this.comparisonResults.find(r => r.id === colorId);
             if (resultItem) {
                 delete resultItem.actionTaken;
             }
         } else if (action.type === 'add') {
-            // Eliminar el color agregado
             const index = this.primaryData.findIndex(p => p.id === colorId);
             if (index !== -1) {
                 this.primaryData.splice(index, 1);
@@ -347,22 +315,18 @@ class AlphaColorMatch {
             }
         }
         
-        // Eliminar acción del historial
         const actionIndex = this.actionHistory.findIndex(a => a.id === action.id);
         if (actionIndex !== -1) {
             this.actionHistory.splice(actionIndex, 1);
         }
         
-        // Guardar en historial de deshacer
         this.saveActionToHistory('undo', colorId, action.colorName, `Se deshizo acción de ${actionType}. Motivo: ${reason}`);
         
-        // Actualizar vista
         this.compareFiles();
         
         this.uiRenderer.showToast(`↩️ Se ha deshecho la acción de ${actionType === 'keep' ? 'mantener' : actionType === 'replace' ? 'reemplazar' : 'agregar'} para "${action.colorName}"`, 'success');
     }
     
-    // Guardar acción en el historial persistente
     saveActionToHistory(actionType, colorId, colorName, reason) {
         const history = this.dataManager.getHistory();
         if (history.length > 0) {
@@ -495,4 +459,3 @@ class AlphaColorMatch {
 
 // Inicializar aplicación
 const app = new AlphaColorMatch();
-window.app = app;
