@@ -2,9 +2,8 @@ import { FileHandler } from './modules/fileHandler.js';
 import { ColorMatcher } from './modules/colorMatcher.js';
 import { DataManager } from './modules/dataManager.js';
 import { UIRenderer } from './modules/uiRenderer.js';
-import { Utils } from './modules/utils.js';
 
-class ColorComparatorApp {
+class AlphaColorMatch {
     constructor() {
         this.fileHandler = new FileHandler();
         this.colorMatcher = new ColorMatcher();
@@ -97,7 +96,7 @@ class ColorComparatorApp {
             return;
         }
         
-        // Comparación inteligente estilo BUSCARV
+        // Comparación inteligente - SOLO CMYK
         this.comparisonResults = this.colorMatcher.smartCompare(this.primaryData, this.secondaryData);
         
         // Actualizar estadísticas
@@ -110,7 +109,7 @@ class ColorComparatorApp {
         // Renderizar resultados
         this.filterResults();
         
-        this.uiRenderer.showToast(`🔍 Comparación completada: ${stats.differences} diferencias encontradas`, 'info');
+        this.uiRenderer.showToast(`🔍 Comparación completada: ${stats.differences} diferencias encontradas, ${stats.missing} colores no encontrados`, 'info');
     }
     
     updateStats(stats) {
@@ -124,18 +123,17 @@ class ColorComparatorApp {
     filterResults() {
         let filtered = [...this.comparisonResults];
         
-        // Filtrar por estado
         if (this.currentFilter !== 'all') {
             filtered = filtered.filter(item => item.status === this.currentFilter);
         }
         
-        // Filtrar por búsqueda
         const searchTerm = document.getElementById('searchInput').value.toLowerCase();
         if (searchTerm) {
             filtered = filtered.filter(item => {
                 return item.name.toLowerCase().includes(searchTerm) ||
                        item.id.includes(searchTerm) ||
-                       item.cmyk.some(v => v.toString().includes(searchTerm));
+                       (item.cmykPrimary && item.cmykPrimary.some(v => v.toString().includes(searchTerm))) ||
+                       (item.cmykSecondary && item.cmykSecondary.some(v => v.toString().includes(searchTerm)));
             });
         }
         
@@ -147,6 +145,12 @@ class ColorComparatorApp {
             case 'replace':
                 this.replaceColor(item);
                 break;
+            case 'keep':
+                this.keepCurrentColor(item);
+                break;
+            case 'add':
+                this.addMissingColor(item);
+                break;
             case 'edit':
                 this.editColor(item);
                 break;
@@ -157,19 +161,49 @@ class ColorComparatorApp {
     }
     
     replaceColor(item) {
-        const index = this.primaryData.findIndex(p => p.id === item.id);
+        const index = this.primaryData.findIndex(p => 
+            p.id === item.id || 
+            this.colorMatcher.normalizeName(p.name) === this.colorMatcher.normalizeName(item.name)
+        );
+        
         if (index !== -1) {
-            this.primaryData[index] = { ...item };
+            this.primaryData[index] = {
+                id: item.id,
+                name: item.name,
+                cmyk: [...item.cmykSecondary],
+                lab: item.labSecondary ? [...item.labSecondary] : (item.labPrimary || [0, 0, 0])
+            };
             this.compareFiles();
-            this.uiRenderer.showToast(`♻️ Color "${item.name}" actualizado`, 'success');
+            this.uiRenderer.showToast(`♻️ Color "${item.name}" actualizado con valores del secundario`, 'success');
         }
+    }
+    
+    keepCurrentColor(item) {
+        this.uiRenderer.showToast(`💾 Se mantuvo el valor principal para "${item.name}"`, 'info');
+    }
+    
+    addMissingColor(item) {
+        const newColor = {
+            id: item.id,
+            name: item.name,
+            cmyk: [...item.cmykSecondary],
+            lab: item.labSecondary ? [...item.labSecondary] : [0, 0, 0]
+        };
+        
+        this.primaryData.push(newColor);
+        this.compareFiles();
+        this.uiRenderer.showToast(`✅ Color "${item.name}" agregado a la referencia principal`, 'success');
     }
     
     editColor(item) {
         const newName = prompt('Editar nombre del color:', item.name);
         if (newName && newName.trim()) {
-            item.name = newName.trim();
-            this.replaceColor(item);
+            const index = this.primaryData.findIndex(p => p.id === item.id);
+            if (index !== -1) {
+                this.primaryData[index].name = newName.trim();
+                this.compareFiles();
+                this.uiRenderer.showToast(`✏️ Color renombrado a "${newName}"`, 'success');
+            }
         }
     }
     
@@ -209,7 +243,7 @@ class ColorComparatorApp {
             primaryFile: document.getElementById('primaryFileInfo').querySelector('.filename').textContent,
             secondaryFile: document.getElementById('secondaryFileInfo').querySelector('.filename').textContent,
             stats: { ...stats },
-            results: this.comparisonResults.slice(0, 10) // Guardar solo los primeros 10 para no saturar
+            results: this.comparisonResults.slice(0, 10)
         };
         
         this.dataManager.saveToHistory(historyItem);
@@ -244,6 +278,15 @@ class ColorComparatorApp {
             document.getElementById('secondaryCount').textContent = '0';
             document.getElementById('searchInput').value = '';
             
+            document.querySelectorAll('.filter-tab').forEach(tab => {
+                if (tab.dataset.filter === 'all') {
+                    tab.classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                }
+            });
+            this.currentFilter = 'all';
+            
             this.filterResults();
             this.uiRenderer.showToast('Todos los datos han sido limpiados', 'info');
         }
@@ -261,7 +304,7 @@ class ColorComparatorApp {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `color_data_${new Date().toISOString().slice(0,19)}.txt`;
+        a.download = `alpha_color_data_${new Date().toISOString().slice(0,19)}.txt`;
         a.click();
         URL.revokeObjectURL(url);
         
@@ -269,17 +312,14 @@ class ColorComparatorApp {
     }
     
     switchView(view) {
-        // Actualizar botones
         document.querySelectorAll('.nav-btn').forEach(btn => {
             btn.classList.remove('active');
             if (btn.dataset.view === view) btn.classList.add('active');
         });
         
-        // Actualizar paneles
         document.querySelectorAll('.view-panel').forEach(panel => panel.classList.remove('active'));
         document.getElementById(`${view}View`).classList.add('active');
         
-        // Recargar datos según vista
         if (view === 'history') {
             this.loadHistory();
         } else if (view === 'creator') {
@@ -289,4 +329,5 @@ class ColorComparatorApp {
 }
 
 // Inicializar aplicación
-const app = new ColorComparatorApp();
+const app = new AlphaColorMatch();
+window.app = app;
