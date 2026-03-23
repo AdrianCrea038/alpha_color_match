@@ -861,3 +861,91 @@ body {
 ::-webkit-scrollbar-thumb:hover {
     background: #4a5568;
 }
+/* ========== LOGO Y TÍTULO ESTILO BUS ESCOLAR ========== */
+.logo-container {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 1rem;
+}
+
+.logo-image {
+    max-width: 120px;
+    height: auto;
+    border-radius: 12px;
+    background: #1f1f2a;
+    padding: 0.5rem;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.logo-image:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
+}
+
+/* Título estilo BUS ESCOLAR - Amarillo vibrante con efecto retro */
+.school-bus-title {
+    font-size: 1.6rem;
+    font-weight: 900;
+    text-align: center;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+    
+    /* Color amarillo bus escolar */
+    background: linear-gradient(135deg, #FFD966 0%, #FFB347 50%, #FF8C00 100%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    
+    /* Sombra para efecto 3D */
+    text-shadow: 
+        2px 2px 0px #8B4513,
+        4px 4px 0px rgba(0, 0, 0, 0.3);
+    
+    /* Animación sutil */
+    animation: subtlePulse 2s ease-in-out infinite;
+}
+
+/* Efecto de brillo al pasar el mouse */
+.school-bus-title:hover {
+    background: linear-gradient(135deg, #FFE484 0%, #FFC857 50%, #FFA500 100%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    transform: scale(1.02);
+    transition: all 0.3s ease;
+}
+
+/* Animación sutil para el título */
+@keyframes subtlePulse {
+    0%, 100% {
+        text-shadow: 2px 2px 0px #8B4513, 4px 4px 0px rgba(0, 0, 0, 0.3);
+    }
+    50% {
+        text-shadow: 2px 2px 0px #A0522D, 4px 4px 0px rgba(0, 0, 0, 0.4);
+    }
+}
+
+/* Versión alternativa con borde amarillo (opcional) */
+.school-bus-title-alt {
+    font-size: 1.6rem;
+    font-weight: 900;
+    text-align: center;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+    color: #FFD700;
+    -webkit-text-stroke: 1px #8B4513;
+    text-shadow: 3px 3px 0px #8B4513;
+}
+
+/* Responsive para el logo */
+@media (max-width: 768px) {
+    .logo-image {
+        max-width: 80px;
+    }
+    
+    .school-bus-title {
+        font-size: 1.2rem;
+        letter-spacing: 1px;
+    }
+}
