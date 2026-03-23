@@ -40,51 +40,120 @@ export class UIRenderer {
         tbody.innerHTML = results.map((item, idx) => {
             const statusClass = item.status === 'match' ? 'status-match' : 
                                (item.status === 'diff' ? 'status-diff' : 'status-missing');
-            const statusText = item.status === 'match' ? '✅ Coincidencia exacta' :
-                              (item.status === 'diff' ? '⚠️ Valores diferentes' : '❌ No encontrado');
             
-            const diffHighlight = item.status === 'diff' ? 'diff-highlight' : '';
+            let statusText = '';
+            
+            if (item.status === 'match') {
+                statusText = '✅ Coincidencia exacta';
+            } else if (item.status === 'diff') {
+                statusText = '⚠️ Valores diferentes';
+            } else {
+                statusText = '❌ NO ENCONTRADO';
+            }
+            
+            const diffHighlight = item.status === 'diff' ? 'diff-highlight' : 
+                                 (item.status === 'missing' ? 'missing-highlight' : '');
+            
+            let cmykDisplay = '';
+            if (item.status === 'missing') {
+                cmykDisplay = `
+                    <div class="cmyk-comparison">
+                        <div class="cmyk-secondary">
+                            <strong>📁 Secundario:</strong><br>
+                            C:${item.cmykSecondary[0].toFixed(1)} M:${item.cmykSecondary[1].toFixed(1)} Y:${item.cmykSecondary[2].toFixed(1)} K:${item.cmykSecondary[3].toFixed(1)}
+                        </div>
+                        <div class="cmyk-primary missing">
+                            <strong>⚠️ No encontrado en archivo principal</strong>
+                        </div>
+                    </div>
+                `;
+            } else {
+                cmykDisplay = `
+                    <div class="cmyk-comparison">
+                        <div class="cmyk-primary ${item.status === 'diff' ? 'diff-value' : ''}">
+                            <strong>📁 Principal (Referencia):</strong><br>
+                            C:${item.cmykPrimary[0].toFixed(1)} M:${item.cmykPrimary[1].toFixed(1)} Y:${item.cmykPrimary[2].toFixed(1)} K:${item.cmykPrimary[3].toFixed(1)}
+                        </div>
+                        <div class="cmyk-secondary ${item.status === 'diff' ? 'diff-value' : ''}">
+                            <strong>🔄 Secundario (Comparar):</strong><br>
+                            C:${item.cmykSecondary[0].toFixed(1)} M:${item.cmykSecondary[1].toFixed(1)} Y:${item.cmykSecondary[2].toFixed(1)} K:${item.cmykSecondary[3].toFixed(1)}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            let labDisplay = '';
+            if (item.status !== 'missing' && item.labPrimary && item.labSecondary) {
+                labDisplay = `
+                    <div class="lab-comparison">
+                        <div class="lab-primary">
+                            📁 L:${item.labPrimary[0].toFixed(1)} a:${item.labPrimary[1].toFixed(1)} b:${item.labPrimary[2].toFixed(1)}
+                        </div>
+                        <div class="lab-secondary">
+                            🔄 L:${item.labSecondary[0].toFixed(1)} a:${item.labSecondary[1].toFixed(1)} b:${item.labSecondary[2].toFixed(1)}
+                        </div>
+                    </div>
+                `;
+            } else if (item.status === 'missing' && item.labSecondary) {
+                labDisplay = `
+                    <div class="lab-secondary">
+                        🔄 L:${item.labSecondary[0].toFixed(1)} a:${item.labSecondary[1].toFixed(1)} b:${item.labSecondary[2].toFixed(1)}
+                    </div>
+                `;
+            }
+            
             const diffDetails = item.diffDetails ? 
-                `<div class="diff-details">Δ C:${item.diffDetails.c} M:${item.diffDetails.m} Y:${item.diffDetails.y} K:${item.diffDetails.k}</div>` : '';
+                `<div class="diff-details">
+                    📊 Diferencia: C:${item.diffDetails.cyan} | M:${item.diffDetails.magenta} | Y:${item.diffDetails.yellow} | K:${item.diffDetails.black}
+                    <br>📈 Total: ${item.diffDetails.total}%
+                </div>` : '';
+            
+            const message = item.message ? 
+                `<div class="error-message">${item.message}</div>` : '';
             
             let actions = '';
             if (item.status === 'diff') {
                 actions = `
                     <div class="action-buttons-cell">
-                        <button class="small-btn btn-edit" onclick="window.app.handleColorAction('replace', ${JSON.stringify(item).replace(/"/g, '&quot;')})">Reemplazar</button>
-                        <button class="small-btn" onclick="window.app.handleColorAction('edit', ${JSON.stringify(item).replace(/"/g, '&quot;')})">Editar</button>
+                        <button class="small-btn btn-edit" onclick="window.app.handleColorAction('replace', ${JSON.stringify(item).replace(/"/g, '&quot;')})">
+                            🔄 Reemplazar con valor secundario
+                        </button>
+                        <button class="small-btn" onclick="window.app.handleColorAction('keep', ${JSON.stringify(item).replace(/"/g, '&quot;')})">
+                            💾 Mantener valor principal
+                        </button>
                     </div>
                 `;
             } else if (item.status === 'missing') {
                 actions = `
                     <div class="action-buttons-cell">
-                        <button class="small-btn btn-success" onclick="window.app.handleColorAction('add', ${JSON.stringify(item).replace(/"/g, '&quot;')})">Agregar</button>
-                    </div>
-                `;
-            } else {
-                actions = `
-                    <div class="action-buttons-cell">
-                        <button class="small-btn btn-delete" onclick="window.app.handleColorAction('delete', ${JSON.stringify(item).replace(/"/g, '&quot;')})">Eliminar</button>
+                        <button class="small-btn btn-success" onclick="window.app.handleColorAction('add', ${JSON.stringify(item).replace(/"/g, '&quot;')})">
+                            ➕ Agregar a referencia principal
+                        </button>
                     </div>
                 `;
             }
             
             return `
                 <tr class="${diffHighlight}">
-                    <td>${item.id}</td>
-                    <td><strong>${item.name}</strong>${item.suggestedMatch ? `<br><small style="color:#888;">Sugerido: ${item.suggestedMatch}</small>` : ''}</td>
-                    <td>C:${item.cmyk[0].toFixed(1)} M:${item.cmyk[1].toFixed(1)} Y:${item.cmyk[2].toFixed(1)} K:${item.cmyk[3].toFixed(1)}</td>
-                    <td>L:${item.lab[0].toFixed(1)} a:${item.lab[1].toFixed(1)} b:${item.lab[2].toFixed(1)}</td>
+                    <td><strong>${item.id}</strong></td>
+                    <td>
+                        <strong>${item.name}</strong>
+                        ${item.originalName && item.originalName !== item.name ? 
+                            `<br><small style="color:#888;">Coincide con: ${item.originalName}</small>` : ''}
+                    </td>
+                    <td>${cmykDisplay}</td>
+                    <td>${labDisplay}</td>
                     <td>
                         <span class="${statusClass}">${statusText}</span>
                         ${diffDetails}
+                        ${message}
+                        ${item.recommendation ? `<div class="recommendation">💡 ${item.recommendation}</div>` : ''}
                     </td>
                     <td>${actions}</td>
                 </tr>
             `;
         }).join('');
         
-        // Exponer app globalmente para los botones
         window.app = app;
     }
     
@@ -165,7 +234,7 @@ export class UIRenderer {
                 <td><input type="number" step="0.1" value="${row.lab.l}" data-field="lab_l" data-idx="${idx}"></td>
                 <td><input type="number" step="0.1" value="${row.lab.a}" data-field="lab_a" data-idx="${idx}"></td>
                 <td><input type="number" step="0.1" value="${row.lab.b}" data-field="lab_b" data-idx="${idx}"></td>
-                <td><button class="small-btn btn-delete" onclick="this.closest('tr').remove(); window.app.uiRenderer.removeCreatorRow(${idx})">🗑️</button></td>
+                <td><button class="small-btn btn-delete" onclick="window.app.uiRenderer.removeCreatorRow(${idx})">🗑️</button></td>
             </tr>
         `).join('');
         
