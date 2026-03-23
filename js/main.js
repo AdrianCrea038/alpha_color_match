@@ -25,12 +25,18 @@ class AlphaColorMatch {
         this.loadHistory();
         this.uiRenderer.initCreatorTable();
         
-        // ✅ CORRECCIÓN: Asignar métodos correctamente SIN crear recursión
-        // Simplemente asignamos la referencia al objeto app, no creamos nuevas funciones
+        // ✅ CORRECCIÓN: Simplemente asignamos la referencia de la instancia
+        // NO redefinimos los métodos, porque ya existen en 'this'
         window.app = this;
         
-        // ✅ Los métodos ya están disponibles directamente en window.app
-        // No necesitas reasignarlos, ya que this ya tiene estos métodos
+        // También exponemos los métodos específicos si es necesario (SIN RECURSIÓN)
+        // Estos son solo referencias, no nuevas funciones
+        if (!window.showReplaceConfirm) {
+            window.showReplaceConfirm = (colorId) => this.showReplaceConfirm(colorId);
+            window.showKeepConfirm = (colorId) => this.showKeepConfirm(colorId);
+            window.showAddConfirm = (colorId) => this.showAddConfirm(colorId);
+            window.showUndoDialog = (colorId, actionType) => this.showUndoDialog(colorId, actionType);
+        }
     }
     
     bindEvents() {
@@ -147,7 +153,7 @@ class AlphaColorMatch {
         this.uiRenderer.renderComparisonTable(filtered, this);
     }
     
-    // ✅ MÉTODOS PARA ACCIONES - Ahora correctamente definidos
+    // ✅ MÉTODOS PRINCIPALES - Correctamente definidos como métodos de clase
     showReplaceConfirm(colorId) {
         const color = this.comparisonResults.find(c => c.id === colorId);
         if (!color) return;
