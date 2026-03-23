@@ -2,6 +2,7 @@ export class UIRenderer {
     constructor(app) {
         this.app = app;
         this.creatorRows = [];
+        this.pendingActions = new Map(); // Almacena acciones pendientes para deshacer
     }
     
     showToast(message, type = 'info') {
@@ -13,13 +14,29 @@ export class UIRenderer {
             success: '✅',
             error: '❌',
             warning: '⚠️',
-            info: 'ℹ️'
+            info: 'ℹ️',
+            undo: '↩️'
         };
         
-        toast.innerHTML = `${icons[type] || 'ℹ️'} ${message}`;
+        // Si es un mensaje con opción de deshacer
+        if (type === 'undo' && message.includes('Mantener')) {
+            toast.innerHTML = `${icons.undo} ${message}`;
+            toast.style.cursor = 'pointer';
+            toast.style.borderLeftColor = '#f59e0b';
+            toast.onclick = () => {
+                const actionId = toast.dataset.actionId;
+                if (actionId && this.app.undoLastAction) {
+                    this.app.undoLastAction(actionId);
+                }
+                toast.remove();
+            };
+        } else {
+            toast.innerHTML = `${icons[type] || 'ℹ️'} ${message}`;
+        }
+        
         container.appendChild(toast);
         
-        setTimeout(() => toast.remove(), 3000);
+        setTimeout(() => toast.remove(), 4000);
     }
     
     renderComparisonTable(results, app) {
@@ -54,6 +71,11 @@ export class UIRenderer {
             const diffHighlight = item.status === 'diff' ? 'diff-highlight' : 
                                  (item.status === 'missing' ? 'missing-highlight' : '');
             
+            // Verificar si ya se tomó una acción en este color
+            const hasActionTaken = item.actionTaken === 'keep' || item.actionTaken === 'replace';
+            const actionTakenText = item.actionTaken === 'keep' ? '🔒 Valor principal mantenido' : 
+                                   (item.actionTaken === 'replace' ? '🔄 Valor actualizado' : '');
+            
             let cmykDisplay = '';
             if (item.status === 'missing') {
                 cmykDisplay = `
@@ -70,11 +92,11 @@ export class UIRenderer {
             } else {
                 cmykDisplay = `
                     <div class="cmyk-comparison">
-                        <div class="cmyk-primary ${item.status === 'diff' ? 'diff-value' : ''}">
+                        <div class="cmyk-primary ${item.status === 'diff' && !hasActionTaken ? 'diff-value' : ''}">
                             <strong>📁 Principal (Referencia):</strong><br>
                             C:${item.cmykPrimary[0].toFixed(1)} M:${item.cmykPrimary[1].toFixed(1)} Y:${item.cmykPrimary[2].toFixed(1)} K:${item.cmykPrimary[3].toFixed(1)}
                         </div>
-                        <div class="cmyk-secondary ${item.status === 'diff' ? 'diff-value' : ''}">
+                        <div class="cmyk-secondary ${item.status === 'diff' && !hasActionTaken ? 'diff-value' : ''}">
                             <strong>🔄 Secundario (Comparar):</strong><br>
                             C:${item.cmykSecondary[0].toFixed(1)} M:${item.cmykSecondary[1].toFixed(1)} Y:${item.cmykSecondary[2].toFixed(1)} K:${item.cmykSecondary[3].toFixed(1)}
                         </div>
@@ -102,7 +124,7 @@ export class UIRenderer {
                 `;
             }
             
-            const diffDetails = item.diffDetails ? 
+            const diffDetails = item.diffDetails && !hasActionTaken ? 
                 `<div class="diff-details">
                     📊 Diferencia: C:${item.diffDetails.cyan} | M:${item.diffDetails.magenta} | Y:${item.diffDetails.yellow} | K:${item.diffDetails.black}
                     <br>📈 Total: ${item.diffDetails.total}%
@@ -111,22 +133,39 @@ export class UIRenderer {
             const message = item.message ? 
                 `<div class="error-message">${item.message}</div>` : '';
             
+            const actionTakenHtml = actionTakenText ? 
+                `<div class="action-taken">${actionTakenText}</div>` : '';
+            
             let actions = '';
-            if (item.status === 'diff') {
+            
+            // Si ya se tomó una acción, mostrar solo botón de deshacer
+            if (hasActionTaken) {
                 actions = `
                     <div class="action-buttons-cell">
-                        <button class="small-btn btn-edit" onclick="window.app.handleColorAction('replace', ${JSON.stringify(item).replace(/"/g, '&quot;')})">
+                        <button class="small-btn btn-undo" onclick="window.app.showUndoDialog('${item.id}', '${item.actionTaken}')">
+                            ↩️ Deshacer (${item.actionTaken === 'keep' ? 'Mantener' : 'Reemplazar'})
+                        </button>
+                    </div>
+                `;
+            } 
+            // Si hay diferencias y no se ha tomado acción
+            else if (item.status === 'diff') {
+                actions = `
+                    <div class="action-buttons-cell">
+                        <button class="small-btn btn-replace" onclick="window.app.showReplaceConfirm('${item.id}')">
                             🔄 Reemplazar con valor secundario
                         </button>
-                        <button class="small-btn" onclick="window.app.handleColorAction('keep', ${JSON.stringify(item).replace(/"/g, '&quot;')})">
+                        <button class="small-btn btn-keep" onclick="window.app.showKeepConfirm('${item.id}')">
                             💾 Mantener valor principal
                         </button>
                     </div>
                 `;
-            } else if (item.status === 'missing') {
+            } 
+            // Si el color no existe
+            else if (item.status === 'missing') {
                 actions = `
                     <div class="action-buttons-cell">
-                        <button class="small-btn btn-success" onclick="window.app.handleColorAction('add', ${JSON.stringify(item).replace(/"/g, '&quot;')})">
+                        <button class="small-btn btn-success" onclick="window.app.showAddConfirm('${item.id}')">
                             ➕ Agregar a referencia principal
                         </button>
                     </div>
@@ -134,7 +173,7 @@ export class UIRenderer {
             }
             
             return `
-                <tr class="${diffHighlight}">
+                <tr class="${diffHighlight}" data-color-id="${item.id}">
                     <td><strong>${item.id}</strong></td>
                     <td>
                         <strong>${item.name}</strong>
@@ -147,7 +186,8 @@ export class UIRenderer {
                         <span class="${statusClass}">${statusText}</span>
                         ${diffDetails}
                         ${message}
-                        ${item.recommendation ? `<div class="recommendation">💡 ${item.recommendation}</div>` : ''}
+                        ${actionTakenHtml}
+                        ${item.recommendation && !hasActionTaken ? `<div class="recommendation">💡 ${item.recommendation}</div>` : ''}
                     </td>
                     <td>${actions}</td>
                 </tr>
@@ -157,6 +197,211 @@ export class UIRenderer {
         window.app = app;
     }
     
+    // Modal para observaciones al deshacer acción
+    showUndoModal(colorId, actionType, onConfirm) {
+        // Crear modal
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>↩️ Deshacer acción</h3>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>Estás a punto de deshacer la acción: <strong>${actionType === 'keep' ? 'Mantener valor principal' : 'Reemplazar con valor secundario'}</strong></p>
+                    <p>Color: <strong>${colorId}</strong></p>
+                    <div class="form-group">
+                        <label for="undoReason">Motivo del cambio (opcional):</label>
+                        <textarea id="undoReason" class="undo-reason-input" rows="3" placeholder="Ej: Me equivoqué, el color correcto era otro..."></textarea>
+                    </div>
+                    <div class="modal-buttons">
+                        <button class="btn btn-secondary cancel-undo">Cancelar</button>
+                        <button class="btn btn-warning confirm-undo">Confirmar deshacer</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Animación de entrada
+        setTimeout(() => modal.classList.add('active'), 10);
+        
+        // Eventos
+        const closeModal = () => {
+            modal.classList.remove('active');
+            setTimeout(() => modal.remove(), 300);
+        };
+        
+        modal.querySelector('.modal-close').onclick = closeModal;
+        modal.querySelector('.cancel-undo').onclick = closeModal;
+        
+        const reasonTextarea = modal.querySelector('#undoReason');
+        const confirmBtn = modal.querySelector('.confirm-undo');
+        
+        confirmBtn.onclick = () => {
+            const reason = reasonTextarea.value.trim();
+            onConfirm(reason);
+            closeModal();
+        };
+        
+        // Cerrar al hacer clic fuera
+        modal.onclick = (e) => {
+            if (e.target === modal) closeModal();
+        };
+    }
+    
+    // Mostrar confirmación para reemplazar
+    showReplaceConfirm(colorId, onConfirm) {
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>🔄 Confirmar reemplazo</h3>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>¿Estás seguro de reemplazar el color <strong>${colorId}</strong>?</p>
+                    <p>Los valores CMYK del archivo secundario reemplazarán a los del archivo principal.</p>
+                    <div class="form-group">
+                        <label for="replaceReason">Motivo del cambio (opcional):</label>
+                        <textarea id="replaceReason" class="undo-reason-input" rows="2" placeholder="Ej: El nuevo valor es más preciso..."></textarea>
+                    </div>
+                    <div class="modal-buttons">
+                        <button class="btn btn-secondary cancel-replace">Cancelar</button>
+                        <button class="btn btn-primary confirm-replace">Confirmar reemplazo</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        setTimeout(() => modal.classList.add('active'), 10);
+        
+        const closeModal = () => {
+            modal.classList.remove('active');
+            setTimeout(() => modal.remove(), 300);
+        };
+        
+        modal.querySelector('.modal-close').onclick = closeModal;
+        modal.querySelector('.cancel-replace').onclick = closeModal;
+        
+        const reasonTextarea = modal.querySelector('#replaceReason');
+        const confirmBtn = modal.querySelector('.confirm-replace');
+        
+        confirmBtn.onclick = () => {
+            const reason = reasonTextarea.value.trim();
+            onConfirm(reason);
+            closeModal();
+        };
+        
+        modal.onclick = (e) => {
+            if (e.target === modal) closeModal();
+        };
+    }
+    
+    // Mostrar confirmación para mantener valor
+    showKeepConfirm(colorId, onConfirm) {
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>💾 Confirmar mantener valor</h3>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>¿Estás seguro de mantener el valor principal del color <strong>${colorId}</strong>?</p>
+                    <p>Se conservarán los valores CMYK del archivo principal.</p>
+                    <div class="form-group">
+                        <label for="keepReason">Motivo de la decisión (opcional):</label>
+                        <textarea id="keepReason" class="undo-reason-input" rows="2" placeholder="Ej: El valor principal es el correcto..."></textarea>
+                    </div>
+                    <div class="modal-buttons">
+                        <button class="btn btn-secondary cancel-keep">Cancelar</button>
+                        <button class="btn btn-primary confirm-keep">Confirmar</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        setTimeout(() => modal.classList.add('active'), 10);
+        
+        const closeModal = () => {
+            modal.classList.remove('active');
+            setTimeout(() => modal.remove(), 300);
+        };
+        
+        modal.querySelector('.modal-close').onclick = closeModal;
+        modal.querySelector('.cancel-keep').onclick = closeModal;
+        
+        const reasonTextarea = modal.querySelector('#keepReason');
+        const confirmBtn = modal.querySelector('.confirm-keep');
+        
+        confirmBtn.onclick = () => {
+            const reason = reasonTextarea.value.trim();
+            onConfirm(reason);
+            closeModal();
+        };
+        
+        modal.onclick = (e) => {
+            if (e.target === modal) closeModal();
+        };
+    }
+    
+    // Mostrar confirmación para agregar color
+    showAddConfirm(colorId, colorName, onConfirm) {
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>➕ Confirmar agregar color</h3>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>¿Agregar el color <strong>${colorName}</strong> a la referencia principal?</p>
+                    <div class="form-group">
+                        <label for="addReason">Motivo de la adición (opcional):</label>
+                        <textarea id="addReason" class="undo-reason-input" rows="2" placeholder="Ej: Nuevo color necesario para el proyecto..."></textarea>
+                    </div>
+                    <div class="modal-buttons">
+                        <button class="btn btn-secondary cancel-add">Cancelar</button>
+                        <button class="btn btn-success confirm-add">Agregar color</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        setTimeout(() => modal.classList.add('active'), 10);
+        
+        const closeModal = () => {
+            modal.classList.remove('active');
+            setTimeout(() => modal.remove(), 300);
+        };
+        
+        modal.querySelector('.modal-close').onclick = closeModal;
+        modal.querySelector('.cancel-add').onclick = closeModal;
+        
+        const reasonTextarea = modal.querySelector('#addReason');
+        const confirmBtn = modal.querySelector('.confirm-add');
+        
+        confirmBtn.onclick = () => {
+            const reason = reasonTextarea.value.trim();
+            onConfirm(reason);
+            closeModal();
+        };
+        
+        modal.onclick = (e) => {
+            if (e.target === modal) closeModal();
+        };
+    }
+    
+    // Resto de métodos (renderHistory, initCreatorTable, etc.) se mantienen igual...
     renderHistory(history) {
         const container = document.getElementById('historyList');
         
@@ -185,10 +430,26 @@ export class UIRenderer {
                     <span>⚠️ Diferencias: ${item.stats.differences}</span>
                     <span>❌ No encontrados: ${item.stats.missing}</span>
                 </div>
+                ${item.actionsLog && item.actionsLog.length ? `
+                    <details class="history-actions">
+                        <summary>📝 Acciones realizadas (${item.actionsLog.length})</summary>
+                        <div class="actions-log">
+                            ${item.actionsLog.map(log => `
+                                <div class="action-log-item">
+                                    <span class="action-date">${new Date(log.timestamp).toLocaleTimeString()}</span>
+                                    <span class="action-type ${log.type}">${log.type === 'keep' ? '💾 Mantener' : log.type === 'replace' ? '🔄 Reemplazar' : '➕ Agregar'}</span>
+                                    <span class="action-color">${log.colorId}: ${log.colorName}</span>
+                                    ${log.reason ? `<span class="action-reason">📝 ${log.reason}</span>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </details>
+                ` : ''}
             </div>
         `).join('');
     }
     
+    // Métodos de creator (se mantienen igual)
     initCreatorTable() {
         this.resetCreatorTable();
     }
