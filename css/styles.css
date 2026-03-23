@@ -344,7 +344,7 @@ body {
 
 .table-wrapper {
     overflow-x: auto;
-    max-height: 500px;
+    max-height: 550px;
     overflow-y: auto;
 }
 
@@ -368,7 +368,7 @@ body {
 .data-table td {
     padding: 0.8rem;
     border-bottom: 1px solid #1c1c26;
-    vertical-align: middle;
+    vertical-align: top;
 }
 
 .data-table tr:hover td {
@@ -386,7 +386,74 @@ body {
     margin-bottom: 1rem;
 }
 
-/* Estados de comparación */
+/* Estilos para comparación de ambas fórmulas CMYK */
+.cmyk-comparison {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+}
+
+.cmyk-primary, .cmyk-secondary {
+    padding: 0.4rem;
+    border-radius: 0.5rem;
+    background: #111117;
+}
+
+.cmyk-primary.diff-value, .cmyk-secondary.diff-value {
+    background: rgba(239, 68, 68, 0.2);
+    border-left: 3px solid #ef4444;
+}
+
+.cmyk-primary.missing {
+    background: rgba(245, 158, 11, 0.2);
+    border-left: 3px solid #f59e0b;
+    color: #fbbf24;
+}
+
+.lab-comparison {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+}
+
+.lab-primary, .lab-secondary {
+    padding: 0.2rem 0;
+}
+
+.diff-details {
+    font-size: 0.7rem;
+    color: #f87171;
+    margin-top: 0.5rem;
+    padding: 0.3rem;
+    background: rgba(239, 68, 68, 0.1);
+    border-radius: 0.4rem;
+}
+
+.error-message {
+    font-size: 0.7rem;
+    color: #fbbf24;
+    margin-top: 0.3rem;
+    padding: 0.3rem;
+    background: rgba(245, 158, 11, 0.1);
+    border-radius: 0.4rem;
+}
+
+.recommendation {
+    font-size: 0.7rem;
+    color: #10b981;
+    margin-top: 0.5rem;
+    padding: 0.3rem;
+    background: rgba(16, 185, 129, 0.1);
+    border-radius: 0.4rem;
+}
+
+.missing-highlight {
+    background-color: rgba(245, 158, 11, 0.15);
+    border-left: 3px solid #f59e0b;
+}
+
 .status-match {
     color: #10b981;
     font-weight: 500;
@@ -402,17 +469,7 @@ body {
     font-weight: 500;
 }
 
-.diff-highlight {
-    background-color: rgba(239, 68, 68, 0.15);
-    border-left: 3px solid #ef4444;
-}
-
-.diff-details {
-    font-size: 0.7rem;
-    color: #f87171;
-    margin-top: 0.25rem;
-}
-
+/* Action buttons */
 .action-buttons-cell {
     display: flex;
     gap: 0.4rem;
@@ -543,4 +600,18 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #4a5568;
+}
+
+/* Creator controls */
+.creator-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.creator-controls {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
 }
