@@ -25,31 +25,21 @@ class AlphaColorMatch {
         this.loadHistory();
         this.uiRenderer.initCreatorTable();
         
-        // ✅ CORRECCIÓN: Simplemente asignamos la referencia de la instancia
-        // NO redefinimos los métodos, porque ya existen en 'this'
+        // ✅ ÚNICA LÍNEA: exponer la instancia completa
         window.app = this;
         
-        // También exponemos los métodos específicos si es necesario (SIN RECURSIÓN)
-        // Estos son solo referencias, no nuevas funciones
-        if (!window.showReplaceConfirm) {
-            window.showReplaceConfirm = (colorId) => this.showReplaceConfirm(colorId);
-            window.showKeepConfirm = (colorId) => this.showKeepConfirm(colorId);
-            window.showAddConfirm = (colorId) => this.showAddConfirm(colorId);
-            window.showUndoDialog = (colorId, actionType) => this.showUndoDialog(colorId, actionType);
-        }
+        // ⚠️ NO redefinir métodos aquí. Los métodos ya están disponibles en this.
+        // Elimina cualquier línea como: window.app.showReplaceConfirm = ...
     }
     
     bindEvents() {
-        // Navegación
         document.querySelectorAll('.nav-btn').forEach(btn => {
             btn.addEventListener('click', (e) => this.switchView(btn.dataset.view));
         });
         
-        // Upload de archivos
         document.getElementById('primaryFileInput').addEventListener('change', (e) => this.loadPrimaryFile(e.target.files[0]));
         document.getElementById('secondaryFileInput').addEventListener('change', (e) => this.loadSecondaryFile(e.target.files[0]));
         
-        // Botones principales
         document.getElementById('compareBtn').addEventListener('click', () => this.compareFiles());
         document.getElementById('exportResultsBtn').addEventListener('click', () => this.exportResults());
         document.getElementById('clearAllBtn').addEventListener('click', () => this.clearAll());
@@ -58,7 +48,6 @@ class AlphaColorMatch {
         document.getElementById('addColorRowBtn')?.addEventListener('click', () => this.uiRenderer.addCreatorRow());
         document.getElementById('resetCreatorBtn')?.addEventListener('click', () => this.uiRenderer.resetCreatorTable());
         
-        // Búsqueda y filtros
         document.getElementById('searchInput').addEventListener('input', (e) => this.filterResults());
         document.querySelectorAll('.filter-tab').forEach(tab => {
             tab.addEventListener('click', (e) => {
@@ -92,7 +81,6 @@ class AlphaColorMatch {
             infoDiv.querySelector('.filename').textContent = filename;
             infoDiv.querySelector('.record-count').textContent = `${count} registro${count !== 1 ? 's' : ''}`;
         }
-        
         if (type === 'primary') {
             document.getElementById('primaryCount').textContent = count;
         } else {
@@ -105,7 +93,6 @@ class AlphaColorMatch {
             this.uiRenderer.showToast('⚠️ Por favor, cargue el archivo principal primero', 'warning');
             return;
         }
-        
         if (this.secondaryData.length === 0) {
             this.uiRenderer.showToast('⚠️ Por favor, cargue el archivo secundario para comparar', 'warning');
             return;
@@ -135,11 +122,9 @@ class AlphaColorMatch {
     
     filterResults() {
         let filtered = [...this.comparisonResults];
-        
         if (this.currentFilter !== 'all') {
             filtered = filtered.filter(item => item.status === this.currentFilter);
         }
-        
         const searchTerm = document.getElementById('searchInput').value.toLowerCase();
         if (searchTerm) {
             filtered = filtered.filter(item => {
@@ -149,15 +134,13 @@ class AlphaColorMatch {
                        (item.cmykSecondary && item.cmykSecondary.some(v => v.toString().includes(searchTerm)));
             });
         }
-        
         this.uiRenderer.renderComparisonTable(filtered, this);
     }
     
-    // ✅ MÉTODOS PRINCIPALES - Correctamente definidos como métodos de clase
+    // ========== MÉTODOS PARA ACCIONES (NO REASIGNAR EN WINDOW) ==========
     showReplaceConfirm(colorId) {
         const color = this.comparisonResults.find(c => c.id === colorId);
         if (!color) return;
-        
         this.uiRenderer.showReplaceConfirm(colorId, (reason) => {
             this.replaceColor(color, reason);
         });
@@ -166,7 +149,6 @@ class AlphaColorMatch {
     showKeepConfirm(colorId) {
         const color = this.comparisonResults.find(c => c.id === colorId);
         if (!color) return;
-        
         this.uiRenderer.showKeepConfirm(colorId, (reason) => {
             this.keepColor(color, reason);
         });
@@ -175,7 +157,6 @@ class AlphaColorMatch {
     showAddConfirm(colorId) {
         const color = this.comparisonResults.find(c => c.id === colorId);
         if (!color) return;
-        
         this.uiRenderer.showAddConfirm(colorId, color.name, (reason) => {
             this.addMissingColor(color, reason);
         });
@@ -192,7 +173,6 @@ class AlphaColorMatch {
             p.id === item.id || 
             this.colorMatcher.normalizeName(p.name) === this.colorMatcher.normalizeName(item.name)
         );
-        
         if (index !== -1) {
             const previousState = {
                 id: item.id,
@@ -200,7 +180,6 @@ class AlphaColorMatch {
                 cmyk: [...this.primaryData[index].cmyk],
                 lab: [...this.primaryData[index].lab]
             };
-            
             const actionId = `action_${this.actionCounter++}`;
             this.actionHistory.push({
                 id: actionId,
@@ -211,22 +190,16 @@ class AlphaColorMatch {
                 previousState: previousState,
                 reason: reason
             });
-            
             this.primaryData[index] = {
                 id: item.id,
                 name: item.name,
                 cmyk: [...item.cmykSecondary],
                 lab: item.labSecondary ? [...item.labSecondary] : (item.labPrimary || [0, 0, 0])
             };
-            
             const resultItem = this.comparisonResults.find(r => r.id === item.id);
-            if (resultItem) {
-                resultItem.actionTaken = 'replace';
-            }
-            
+            if (resultItem) resultItem.actionTaken = 'replace';
             this.compareFiles();
             this.saveActionToHistory('replace', item.id, item.name, reason);
-            
             this.uiRenderer.showToast(`🔄 Color "${item.name}" reemplazado con valores del secundario`, 'success');
         }
     }
@@ -242,15 +215,10 @@ class AlphaColorMatch {
             previousState: null,
             reason: reason
         });
-        
         const resultItem = this.comparisonResults.find(r => r.id === item.id);
-        if (resultItem) {
-            resultItem.actionTaken = 'keep';
-        }
-        
+        if (resultItem) resultItem.actionTaken = 'keep';
         this.filterResults();
         this.saveActionToHistory('keep', item.id, item.name, reason);
-        
         this.uiRenderer.showToast(`💾 Valor principal mantenido para "${item.name}". Puedes deshacer si fue un error.`, 'undo');
     }
     
@@ -261,7 +229,6 @@ class AlphaColorMatch {
             cmyk: [...item.cmykSecondary],
             lab: item.labSecondary ? [...item.labSecondary] : [0, 0, 0]
         };
-        
         const actionId = `action_${this.actionCounter++}`;
         this.actionHistory.push({
             id: actionId,
@@ -273,28 +240,20 @@ class AlphaColorMatch {
             newColor: {...newColor},
             reason: reason
         });
-        
         this.primaryData.push(newColor);
-        
         const resultItem = this.comparisonResults.find(r => r.id === item.id);
-        if (resultItem) {
-            resultItem.actionTaken = 'add';
-        }
-        
+        if (resultItem) resultItem.actionTaken = 'add';
         this.compareFiles();
         this.saveActionToHistory('add', item.id, item.name, reason);
-        
         this.uiRenderer.showToast(`✅ Color "${item.name}" agregado a la referencia principal`, 'success');
     }
     
     undoAction(colorId, actionType, reason = '') {
         const action = this.actionHistory.find(a => a.colorId === colorId && a.type === actionType);
-        
         if (!action) {
             this.uiRenderer.showToast('❌ No se pudo deshacer la acción', 'error');
             return;
         }
-        
         if (action.type === 'replace' && action.previousState) {
             const index = this.primaryData.findIndex(p => p.id === colorId);
             if (index !== -1) {
@@ -307,29 +266,17 @@ class AlphaColorMatch {
             }
         } else if (action.type === 'keep') {
             const resultItem = this.comparisonResults.find(r => r.id === colorId);
-            if (resultItem) {
-                delete resultItem.actionTaken;
-            }
+            if (resultItem) delete resultItem.actionTaken;
         } else if (action.type === 'add') {
             const index = this.primaryData.findIndex(p => p.id === colorId);
-            if (index !== -1) {
-                this.primaryData.splice(index, 1);
-            }
+            if (index !== -1) this.primaryData.splice(index, 1);
             const resultItem = this.comparisonResults.find(r => r.id === colorId);
-            if (resultItem) {
-                delete resultItem.actionTaken;
-            }
+            if (resultItem) delete resultItem.actionTaken;
         }
-        
         const actionIndex = this.actionHistory.findIndex(a => a.id === action.id);
-        if (actionIndex !== -1) {
-            this.actionHistory.splice(actionIndex, 1);
-        }
-        
+        if (actionIndex !== -1) this.actionHistory.splice(actionIndex, 1);
         this.saveActionToHistory('undo', colorId, action.colorName, `Se deshizo acción de ${actionType}. Motivo: ${reason}`);
-        
         this.compareFiles();
-        
         this.uiRenderer.showToast(`↩️ Se ha deshecho la acción de ${actionType === 'keep' ? 'mantener' : actionType === 'replace' ? 'reemplazar' : 'agregar'} para "${action.colorName}"`, 'success');
     }
     
@@ -337,9 +284,7 @@ class AlphaColorMatch {
         const history = this.dataManager.getHistory();
         if (history.length > 0) {
             const lastHistory = history[0];
-            if (!lastHistory.actionsLog) {
-                lastHistory.actionsLog = [];
-            }
+            if (!lastHistory.actionsLog) lastHistory.actionsLog = [];
             lastHistory.actionsLog.push({
                 type: actionType,
                 colorId: colorId,
@@ -356,7 +301,6 @@ class AlphaColorMatch {
             this.uiRenderer.showToast('No hay resultados para exportar', 'warning');
             return;
         }
-        
         const content = this.fileHandler.generateExportContent(this.comparisonResults);
         const blob = new Blob([content], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
@@ -365,7 +309,6 @@ class AlphaColorMatch {
         a.download = `alpha_comparison_${new Date().toISOString().slice(0,19)}.txt`;
         a.click();
         URL.revokeObjectURL(url);
-        
         this.uiRenderer.showToast('📥 Resultados exportados exitosamente', 'success');
     }
     
@@ -379,7 +322,6 @@ class AlphaColorMatch {
             actionsLog: [],
             results: this.comparisonResults.slice(0, 10)
         };
-        
         this.dataManager.saveToHistory(historyItem);
         this.loadHistory();
     }
@@ -404,7 +346,6 @@ class AlphaColorMatch {
             this.comparisonResults = [];
             this.currentFilter = 'all';
             this.actionHistory = [];
-            
             document.getElementById('primaryFileInput').value = '';
             document.getElementById('secondaryFileInput').value = '';
             document.getElementById('primaryFileInfo').querySelector('.filename').textContent = 'Ningún archivo cargado';
@@ -412,16 +353,11 @@ class AlphaColorMatch {
             document.getElementById('primaryCount').textContent = '0';
             document.getElementById('secondaryCount').textContent = '0';
             document.getElementById('searchInput').value = '';
-            
             document.querySelectorAll('.filter-tab').forEach(tab => {
-                if (tab.dataset.filter === 'all') {
-                    tab.classList.add('active');
-                } else {
-                    tab.classList.remove('active');
-                }
+                if (tab.dataset.filter === 'all') tab.classList.add('active');
+                else tab.classList.remove('active');
             });
             this.currentFilter = 'all';
-            
             this.filterResults();
             this.uiRenderer.showToast('Todos los datos han sido limpiados', 'info');
         }
@@ -433,7 +369,6 @@ class AlphaColorMatch {
             this.uiRenderer.showToast('No hay datos para exportar', 'warning');
             return;
         }
-        
         const content = this.fileHandler.generateTxtFromData(creatorData);
         const blob = new Blob([content], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
@@ -442,7 +377,6 @@ class AlphaColorMatch {
         a.download = `alpha_color_data_${new Date().toISOString().slice(0,19)}.txt`;
         a.click();
         URL.revokeObjectURL(url);
-        
         this.uiRenderer.showToast('✨ Archivo TXT generado exitosamente', 'success');
     }
     
@@ -451,17 +385,11 @@ class AlphaColorMatch {
             btn.classList.remove('active');
             if (btn.dataset.view === view) btn.classList.add('active');
         });
-        
         document.querySelectorAll('.view-panel').forEach(panel => panel.classList.remove('active'));
         document.getElementById(`${view}View`).classList.add('active');
-        
-        if (view === 'history') {
-            this.loadHistory();
-        } else if (view === 'creator') {
-            this.uiRenderer.initCreatorTable();
-        }
+        if (view === 'history') this.loadHistory();
+        else if (view === 'creator') this.uiRenderer.initCreatorTable();
     }
 }
 
-// Inicializar aplicación
 const app = new AlphaColorMatch();
