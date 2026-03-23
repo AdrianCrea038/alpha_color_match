@@ -40,4 +40,11 @@ export class Utils {
     static validateLAB(l, a, b) {
         return l >= 0 && l <= 100 && a >= -128 && a <= 127 && b >= -128 && b <= 127;
     }
+    
+    static calculateDeltaE(lab1, lab2) {
+        const dl = lab1[0] - lab2[0];
+        const da = lab1[1] - lab2[1];
+        const db = lab1[2] - lab2[2];
+        return Math.sqrt(dl * dl + da * da + db * db);
+    }
 }
