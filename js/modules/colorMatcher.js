@@ -11,16 +11,10 @@ export class ColorMatcher {
         };
     }
 
-    /**
-     * Comparación inteligente - SOLO por valores CMYK
-     */
     smartCompare(primaryData, secondaryData) {
         const results = [];
-        
-        // Crear índice de búsqueda para datos primarios
         const primaryIndex = this.buildSearchIndex(primaryData);
         
-        // Comparar cada registro secundario
         for (const secondary of secondaryData) {
             const comparison = this.compareSingleColor(secondary, primaryIndex, primaryData);
             results.push(comparison);
@@ -29,9 +23,6 @@ export class ColorMatcher {
         return results;
     }
     
-    /**
-     * Construye índice de búsqueda optimizado
-     */
     buildSearchIndex(primaryData) {
         const index = {
             byNormalizedName: new Map(),
@@ -55,13 +46,9 @@ export class ColorMatcher {
         return index;
     }
     
-    /**
-     * Compara un solo color - ENFOCADO EN CMYK
-     */
     compareSingleColor(secondary, primaryIndex, primaryData) {
         const normalizedName = this.normalizeName(secondary.name);
         
-        // Buscar coincidencia
         let match = primaryIndex.byNormalizedName.get(normalizedName);
         
         if (!match) {
@@ -73,17 +60,15 @@ export class ColorMatcher {
         }
         
         if (match) {
-            // Calcular diferencias CMYK
             const differences = this.compareCmykValues(match.cmyk, secondary.cmyk);
             const hasDifferences = differences.some(d => Math.abs(d) > 0.01);
             const diffPercentage = this.calculateDifferencePercentage(match.cmyk, secondary.cmyk);
             
-            // Crear objeto con AMBAS fórmulas CMYK
             return {
                 id: secondary.id,
                 name: secondary.name,
-                cmykPrimary: match.cmyk,      // CMYK del archivo principal
-                cmykSecondary: secondary.cmyk, // CMYK del archivo secundario
+                cmykPrimary: match.cmyk,
+                cmykSecondary: secondary.cmyk,
                 labPrimary: match.lab,
                 labSecondary: secondary.lab,
                 status: hasDifferences ? 'diff' : 'match',
@@ -97,7 +82,6 @@ export class ColorMatcher {
             };
         }
         
-        // No se encontró ninguna coincidencia - INDICAR CLARAMENTE
         return {
             id: secondary.id,
             name: secondary.name,
