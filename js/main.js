@@ -14,6 +14,8 @@ class AlphaColorMatch {
         this.secondaryData = [];
         this.comparisonResults = [];
         this.currentFilter = 'all';
+        this.actionHistory = []; // Historial de acciones para deshacer
+        this.actionCounter = 0;
         
         this.init();
     }
@@ -22,6 +24,14 @@ class AlphaColorMatch {
         this.bindEvents();
         this.loadHistory();
         this.uiRenderer.initCreatorTable();
+        
+        // Exponer métodos al window para los botones
+        window.app = this;
+        window.app.showReplaceConfirm = (colorId) => this.showReplaceConfirm(colorId);
+        window.app.showKeepConfirm = (colorId) => this.showKeepConfirm(colorId);
+        window.app.showAddConfirm = (colorId) => this.showAddConfirm(colorId);
+        window.app.showUndoDialog = (colorId, actionType) => this.showUndoDialog(colorId, actionType);
+        window.app.undoLastAction = (actionId) => this.undoLastAction(actionId);
     }
     
     bindEvents() {
@@ -96,6 +106,10 @@ class AlphaColorMatch {
             return;
         }
         
+        // Limpiar acciones previas al hacer nueva comparación
+        this.actionHistory = [];
+        this.actionCounter = 0;
+        
         // Comparación inteligente - SOLO CMYK
         this.comparisonResults = this.colorMatcher.smartCompare(this.primaryData, this.secondaryData);
         
@@ -140,49 +154,124 @@ class AlphaColorMatch {
         this.uiRenderer.renderComparisonTable(filtered, this);
     }
     
-    handleColorAction(action, item) {
-        switch(action) {
-            case 'replace':
-                this.replaceColor(item);
-                break;
-            case 'keep':
-                this.keepCurrentColor(item);
-                break;
-            case 'add':
-                this.addMissingColor(item);
-                break;
-            case 'edit':
-                this.editColor(item);
-                break;
-            case 'delete':
-                this.deleteColor(item);
-                break;
-        }
+    // Mostrar confirmación para reemplazar
+    showReplaceConfirm(colorId) {
+        const color = this.comparisonResults.find(c => c.id === colorId);
+        if (!color) return;
+        
+        this.uiRenderer.showReplaceConfirm(colorId, (reason) => {
+            this.replaceColor(color, reason);
+        });
     }
     
-    replaceColor(item) {
+    // Mostrar confirmación para mantener
+    showKeepConfirm(colorId) {
+        const color = this.comparisonResults.find(c => c.id === colorId);
+        if (!color) return;
+        
+        this.uiRenderer.showKeepConfirm(colorId, (reason) => {
+            this.keepColor(color, reason);
+        });
+    }
+    
+    // Mostrar confirmación para agregar
+    showAddConfirm(colorId) {
+        const color = this.comparisonResults.find(c => c.id === colorId);
+        if (!color) return;
+        
+        this.uiRenderer.showAddConfirm(colorId, color.name, (reason) => {
+            this.addMissingColor(color, reason);
+        });
+    }
+    
+    // Mostrar diálogo para deshacer
+    showUndoDialog(colorId, actionType) {
+        this.uiRenderer.showUndoModal(colorId, actionType, (reason) => {
+            this.undoAction(colorId, actionType, reason);
+        });
+    }
+    
+    // Reemplazar color
+    replaceColor(item, reason = '') {
         const index = this.primaryData.findIndex(p => 
             p.id === item.id || 
             this.colorMatcher.normalizeName(p.name) === this.colorMatcher.normalizeName(item.name)
         );
         
         if (index !== -1) {
+            // Guardar estado anterior para poder deshacer
+            const previousState = {
+                id: item.id,
+                name: item.name,
+                cmyk: [...this.primaryData[index].cmyk],
+                lab: [...this.primaryData[index].lab]
+            };
+            
+            // Guardar en historial de acciones
+            const actionId = `action_${this.actionCounter++}`;
+            this.actionHistory.push({
+                id: actionId,
+                type: 'replace',
+                colorId: item.id,
+                colorName: item.name,
+                timestamp: new Date().toISOString(),
+                previousState: previousState,
+                reason: reason
+            });
+            
+            // Actualizar datos
             this.primaryData[index] = {
                 id: item.id,
                 name: item.name,
                 cmyk: [...item.cmykSecondary],
                 lab: item.labSecondary ? [...item.labSecondary] : (item.labPrimary || [0, 0, 0])
             };
+            
+            // Marcar en resultados que se tomó acción
+            const resultItem = this.comparisonResults.find(r => r.id === item.id);
+            if (resultItem) {
+                resultItem.actionTaken = 'replace';
+            }
+            
             this.compareFiles();
-            this.uiRenderer.showToast(`♻️ Color "${item.name}" actualizado con valores del secundario`, 'success');
+            
+            // Guardar en historial de acciones del usuario
+            this.saveActionToHistory('replace', item.id, item.name, reason);
+            
+            this.uiRenderer.showToast(`🔄 Color "${item.name}" reemplazado con valores del secundario. ID acción: ${actionId}`, 'success');
         }
     }
     
-    keepCurrentColor(item) {
-        this.uiRenderer.showToast(`💾 Se mantuvo el valor principal para "${item.name}"`, 'info');
+    // Mantener color actual (sin cambios)
+    keepColor(item, reason = '') {
+        // Guardar en historial de acciones
+        const actionId = `action_${this.actionCounter++}`;
+        this.actionHistory.push({
+            id: actionId,
+            type: 'keep',
+            colorId: item.id,
+            colorName: item.name,
+            timestamp: new Date().toISOString(),
+            previousState: null,
+            reason: reason
+        });
+        
+        // Marcar en resultados que se tomó acción
+        const resultItem = this.comparisonResults.find(r => r.id === item.id);
+        if (resultItem) {
+            resultItem.actionTaken = 'keep';
+        }
+        
+        this.filterResults(); // Solo refrescar la vista
+        
+        // Guardar en historial de acciones del usuario
+        this.saveActionToHistory('keep', item.id, item.name, reason);
+        
+        this.uiRenderer.showToast(`💾 Valor principal mantenido para "${item.name}". Puedes deshacer si fue un error.`, 'undo');
     }
     
-    addMissingColor(item) {
+    // Agregar color faltante
+    addMissingColor(item, reason = '') {
         const newColor = {
             id: item.id,
             name: item.name,
@@ -190,31 +279,105 @@ class AlphaColorMatch {
             lab: item.labSecondary ? [...item.labSecondary] : [0, 0, 0]
         };
         
+        // Guardar acción para deshacer
+        const actionId = `action_${this.actionCounter++}`;
+        this.actionHistory.push({
+            id: actionId,
+            type: 'add',
+            colorId: item.id,
+            colorName: item.name,
+            timestamp: new Date().toISOString(),
+            previousState: null,
+            newColor: {...newColor},
+            reason: reason
+        });
+        
         this.primaryData.push(newColor);
-        this.compareFiles();
-        this.uiRenderer.showToast(`✅ Color "${item.name}" agregado a la referencia principal`, 'success');
-    }
-    
-    editColor(item) {
-        const newName = prompt('Editar nombre del color:', item.name);
-        if (newName && newName.trim()) {
-            const index = this.primaryData.findIndex(p => p.id === item.id);
-            if (index !== -1) {
-                this.primaryData[index].name = newName.trim();
-                this.compareFiles();
-                this.uiRenderer.showToast(`✏️ Color renombrado a "${newName}"`, 'success');
-            }
+        
+        // Marcar en resultados
+        const resultItem = this.comparisonResults.find(r => r.id === item.id);
+        if (resultItem) {
+            resultItem.actionTaken = 'add';
         }
+        
+        this.compareFiles();
+        
+        // Guardar en historial
+        this.saveActionToHistory('add', item.id, item.name, reason);
+        
+        this.uiRenderer.showToast(`✅ Color "${item.name}" agregado a la referencia principal. ID acción: ${actionId}`, 'success');
     }
     
-    deleteColor(item) {
-        if (confirm(`¿Eliminar el color "${item.name}" de la referencia principal?`)) {
-            const index = this.primaryData.findIndex(p => p.id === item.id);
+    // Deshacer acción
+    undoAction(colorId, actionType, reason = '') {
+        const action = this.actionHistory.find(a => a.colorId === colorId && a.type === actionType);
+        
+        if (!action) {
+            this.uiRenderer.showToast('❌ No se pudo deshacer la acción', 'error');
+            return;
+        }
+        
+        if (action.type === 'replace' && action.previousState) {
+            // Restaurar estado anterior
+            const index = this.primaryData.findIndex(p => p.id === colorId);
+            if (index !== -1) {
+                this.primaryData[index] = {
+                    id: action.previousState.id,
+                    name: action.previousState.name,
+                    cmyk: [...action.previousState.cmyk],
+                    lab: [...action.previousState.lab]
+                };
+            }
+        } else if (action.type === 'keep') {
+            // Para keep, no hay cambios que revertir en datos, solo en UI
+            // Eliminar la marca de acción
+            const resultItem = this.comparisonResults.find(r => r.id === colorId);
+            if (resultItem) {
+                delete resultItem.actionTaken;
+            }
+        } else if (action.type === 'add') {
+            // Eliminar el color agregado
+            const index = this.primaryData.findIndex(p => p.id === colorId);
             if (index !== -1) {
                 this.primaryData.splice(index, 1);
-                this.compareFiles();
-                this.uiRenderer.showToast(`🗑️ Color "${item.name}" eliminado`, 'success');
             }
+            const resultItem = this.comparisonResults.find(r => r.id === colorId);
+            if (resultItem) {
+                delete resultItem.actionTaken;
+            }
+        }
+        
+        // Eliminar acción del historial
+        const actionIndex = this.actionHistory.findIndex(a => a.id === action.id);
+        if (actionIndex !== -1) {
+            this.actionHistory.splice(actionIndex, 1);
+        }
+        
+        // Guardar en historial de deshacer
+        this.saveActionToHistory('undo', colorId, action.colorName, `Se deshizo acción de ${actionType}. Motivo: ${reason}`);
+        
+        // Actualizar vista
+        this.compareFiles();
+        
+        this.uiRenderer.showToast(`↩️ Se ha deshecho la acción de ${actionType === 'keep' ? 'mantener' : actionType === 'replace' ? 'reemplazar' : 'agregar'} para "${action.colorName}"`, 'success');
+    }
+    
+    // Guardar acción en el historial persistente
+    saveActionToHistory(actionType, colorId, colorName, reason) {
+        const history = this.dataManager.getHistory();
+        if (history.length > 0) {
+            const lastHistory = history[0];
+            if (!lastHistory.actionsLog) {
+                lastHistory.actionsLog = [];
+            }
+            lastHistory.actionsLog.push({
+                type: actionType,
+                colorId: colorId,
+                colorName: colorName,
+                reason: reason,
+                timestamp: new Date().toISOString()
+            });
+            this.dataManager.saveToHistory(lastHistory);
         }
     }
     
@@ -229,7 +392,7 @@ class AlphaColorMatch {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `comparison_${new Date().toISOString().slice(0,19)}.txt`;
+        a.download = `alpha_comparison_${new Date().toISOString().slice(0,19)}.txt`;
         a.click();
         URL.revokeObjectURL(url);
         
@@ -243,6 +406,7 @@ class AlphaColorMatch {
             primaryFile: document.getElementById('primaryFileInfo').querySelector('.filename').textContent,
             secondaryFile: document.getElementById('secondaryFileInfo').querySelector('.filename').textContent,
             stats: { ...stats },
+            actionsLog: [],
             results: this.comparisonResults.slice(0, 10)
         };
         
@@ -269,6 +433,7 @@ class AlphaColorMatch {
             this.secondaryData = [];
             this.comparisonResults = [];
             this.currentFilter = 'all';
+            this.actionHistory = [];
             
             document.getElementById('primaryFileInput').value = '';
             document.getElementById('secondaryFileInput').value = '';
