@@ -16,20 +16,25 @@ class AlphaColorMatch {
         this.currentFilter = 'all';
         this.actionHistory = [];
         this.actionCounter = 0;
+        this.searchTerm = '';
+        
+        this.actionStateMap = new Map();
         
         this.init();
     }
+    
+    // ============================================================
+    // MÉTODOS DE INICIALIZACIÓN
+    // ============================================================
     
     init() {
         this.bindEvents();
         this.loadHistory();
         this.uiRenderer.initCreatorTable();
-        
-        // ✅ ÚNICA LÍNEA: exponer la instancia completa
         window.app = this;
         
-        // ⚠️ NO redefinir métodos aquí. Los métodos ya están disponibles en this.
-        // Elimina cualquier línea como: window.app.showReplaceConfirm = ...
+        // ✅ CARGAR TODO EL ESTADO GUARDADO
+        this.loadFullState();
     }
     
     bindEvents() {
@@ -41,6 +46,7 @@ class AlphaColorMatch {
         document.getElementById('secondaryFileInput').addEventListener('change', (e) => this.loadSecondaryFile(e.target.files[0]));
         
         document.getElementById('compareBtn').addEventListener('click', () => this.compareFiles());
+        document.getElementById('replaceAllBtn')?.addEventListener('click', () => this.replaceAllColors());
         document.getElementById('exportResultsBtn').addEventListener('click', () => this.exportResults());
         document.getElementById('clearAllBtn').addEventListener('click', () => this.clearAll());
         document.getElementById('clearHistoryBtn')?.addEventListener('click', () => this.clearHistory());
@@ -48,31 +54,29 @@ class AlphaColorMatch {
         document.getElementById('addColorRowBtn')?.addEventListener('click', () => this.uiRenderer.addCreatorRow());
         document.getElementById('resetCreatorBtn')?.addEventListener('click', () => this.uiRenderer.resetCreatorTable());
         
-        document.getElementById('searchInput').addEventListener('input', (e) => this.filterResults());
+        const searchInput = document.getElementById('searchInput');
+        searchInput.addEventListener('input', (e) => {
+            this.searchTerm = e.target.value;
+            this.filterResults();
+            this.saveFullState();
+        });
+        
         document.querySelectorAll('.filter-tab').forEach(tab => {
             tab.addEventListener('click', (e) => {
                 this.currentFilter = tab.dataset.filter;
                 document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
                 tab.classList.add('active');
                 this.filterResults();
+                this.saveFullState();
             });
         });
     }
     
-    async loadPrimaryFile(file) {
-        if (!file) return;
-        const data = await this.fileHandler.parseTxtFile(file);
-        this.primaryData = data;
-        this.updateFileInfo('primary', file.name, data.length);
-        this.uiRenderer.showToast(`✅ Archivo principal cargado: ${data.length} colores`, 'success');
-    }
-    
-    async loadSecondaryFile(file) {
-        if (!file) return;
-        const data = await this.fileHandler.parseTxtFile(file);
-        this.secondaryData = data;
-        this.updateFileInfo('secondary', file.name, data.length);
-        this.uiRenderer.showToast(`✅ Archivo secundario cargado: ${data.length} colores`, 'success');
+    showLoading(show) {
+        const overlay = document.getElementById('loadingOverlay');
+        if (overlay) {
+            overlay.style.display = show ? 'flex' : 'none';
+        }
     }
     
     updateFileInfo(type, filename, count) {
@@ -88,6 +92,193 @@ class AlphaColorMatch {
         }
     }
     
+    // ============================================================
+    // ✅ GUARDAR ESTADO COMPLETO
+    // ============================================================
+    
+    saveFullState() {
+        try {
+            const searchInput = document.getElementById('searchInput');
+            const currentSearchTerm = searchInput ? searchInput.value : '';
+            
+            const fullState = {
+                primaryData: this.primaryData,
+                secondaryData: this.secondaryData,
+                actionStateMap: Array.from(this.actionStateMap.entries()),
+                currentFilter: this.currentFilter,
+                searchTerm: currentSearchTerm,
+                lastUpdated: new Date().toISOString(),
+                version: '1.0'
+            };
+            localStorage.setItem('alpha_color_match_full_state', JSON.stringify(fullState));
+            console.log('💾 Estado completo guardado:', {
+                colores: this.primaryData.length,
+                secundarios: this.secondaryData.length,
+                acciones: this.actionStateMap.size,
+                filtro: this.currentFilter
+            });
+        } catch (error) {
+            console.error('Error al guardar estado completo:', error);
+        }
+    }
+    
+    // ✅ CARGAR ESTADO COMPLETO Y REGENERAR COMPARACIÓN
+    loadFullState() {
+        try {
+            const savedState = localStorage.getItem('alpha_color_match_full_state');
+            if (savedState) {
+                const state = JSON.parse(savedState);
+                console.log('📂 Cargando estado guardado...', state);
+                
+                let hasData = false;
+                
+                // Restaurar primaryData
+                if (state.primaryData && state.primaryData.length > 0) {
+                    this.primaryData = state.primaryData;
+                    this.updateFileInfo('primary', 'Datos guardados', this.primaryData.length);
+                    hasData = true;
+                }
+                
+                // Restaurar secondaryData
+                if (state.secondaryData && state.secondaryData.length > 0) {
+                    this.secondaryData = state.secondaryData;
+                    this.updateFileInfo('secondary', 'Datos guardados', this.secondaryData.length);
+                    hasData = true;
+                }
+                
+                // Restaurar actionStateMap
+                if (state.actionStateMap && state.actionStateMap.length > 0) {
+                    this.actionStateMap = new Map(state.actionStateMap);
+                    console.log(`✅ Estado restaurado: ${this.actionStateMap.size} colores marcados`);
+                    hasData = true;
+                }
+                
+                // Restaurar filtro
+                if (state.currentFilter) {
+                    this.currentFilter = state.currentFilter;
+                    document.querySelectorAll('.filter-tab').forEach(tab => {
+                        if (tab.dataset.filter === this.currentFilter) {
+                            tab.classList.add('active');
+                        } else {
+                            tab.classList.remove('active');
+                        }
+                    });
+                }
+                
+                // Restaurar búsqueda
+                if (state.searchTerm !== undefined) {
+                    const searchInput = document.getElementById('searchInput');
+                    if (searchInput) {
+                        searchInput.value = state.searchTerm;
+                        this.searchTerm = state.searchTerm;
+                    }
+                }
+                
+                // ✅ CRÍTICO: Si hay primaryData y secondaryData, regenerar la comparación
+                if (this.primaryData.length > 0 && this.secondaryData.length > 0) {
+                    console.log('🔄 Regenerando comparación con datos guardados...');
+                    
+                    // Regenerar resultados de comparación
+                    const rawResults = this.colorMatcher.smartCompare(this.primaryData, this.secondaryData);
+                    
+                    // Aplicar los estados guardados
+                    this.comparisonResults = rawResults.map(result => {
+                        const savedStateItem = this.actionStateMap.get(result.id);
+                        if (savedStateItem) {
+                            return {
+                                ...result,
+                                actionTaken: savedStateItem.actionTaken,
+                                actionReason: savedStateItem.reason,
+                                actionTimestamp: savedStateItem.timestamp
+                            };
+                        }
+                        return result;
+                    });
+                    
+                    console.log(`✅ Comparación regenerada: ${this.comparisonResults.length} resultados`);
+                    
+                    // Actualizar estadísticas
+                    const stats = this.colorMatcher.getComparisonStats(this.comparisonResults);
+                    this.updateStats(stats);
+                    this.updateStatsBar(stats);
+                    
+                    // Guardar en historial
+                    this.saveToHistory(stats);
+                    
+                    // Mostrar resultados
+                    this.filterResults();
+                    
+                    this.uiRenderer.showToast(`💾 Datos recuperados: ${this.primaryData.length} colores, ${this.comparisonResults.length} resultados`, 'success');
+                } else if (hasData) {
+                    this.uiRenderer.showToast(`📂 Datos cargados: ${this.primaryData.length} colores en referencia`, 'info');
+                    this.filterResults();
+                }
+            }
+        } catch (error) {
+            console.error('Error al cargar estado completo:', error);
+        }
+    }
+    
+    clearFullState() {
+        localStorage.removeItem('alpha_color_match_full_state');
+        console.log('🗑️ Estado completo eliminado');
+    }
+    
+    // ============================================================
+    // CARGA DE ARCHIVOS
+    // ============================================================
+    
+    async loadPrimaryFile(file) {
+        if (!file) return;
+        this.showLoading(true);
+        try {
+            const data = await this.fileHandler.parseTxtFile(file);
+            this.primaryData = data;
+            this.updateFileInfo('primary', file.name, data.length);
+            this.uiRenderer.showToast(`✅ Archivo principal cargado: ${data.length} colores`, 'success');
+            this.actionStateMap.clear();
+            
+            // ✅ GUARDAR ESTADO
+            this.saveFullState();
+            
+            // Si ya hay secondaryData, hacer comparación automática
+            if (this.secondaryData.length > 0) {
+                this.compareFiles();
+            } else {
+                this.filterResults();
+            }
+        } finally {
+            this.showLoading(false);
+        }
+    }
+    
+    async loadSecondaryFile(file) {
+        if (!file) return;
+        this.showLoading(true);
+        try {
+            const data = await this.fileHandler.parseTxtFile(file);
+            this.secondaryData = data;
+            this.updateFileInfo('secondary', file.name, data.length);
+            this.uiRenderer.showToast(`✅ Archivo secundario cargado: ${data.length} colores`, 'success');
+            
+            // ✅ GUARDAR ESTADO
+            this.saveFullState();
+            
+            // Si ya hay primaryData, hacer comparación automática
+            if (this.primaryData.length > 0) {
+                this.compareFiles();
+            } else {
+                this.filterResults();
+            }
+        } finally {
+            this.showLoading(false);
+        }
+    }
+    
+    // ============================================================
+    // COMPARACIÓN
+    // ============================================================
+    
     compareFiles() {
         if (this.primaryData.length === 0) {
             this.uiRenderer.showToast('⚠️ Por favor, cargue el archivo principal primero', 'warning');
@@ -98,18 +289,40 @@ class AlphaColorMatch {
             return;
         }
         
-        this.actionHistory = [];
-        this.actionCounter = 0;
+        this.showLoading(true);
         
-        this.comparisonResults = this.colorMatcher.smartCompare(this.primaryData, this.secondaryData);
-        
-        const stats = this.colorMatcher.getComparisonStats(this.comparisonResults);
-        this.updateStats(stats);
-        
-        this.saveToHistory(stats);
-        this.filterResults();
-        
-        this.uiRenderer.showToast(`🔍 Comparación completada: ${stats.differences} diferencias encontradas, ${stats.missing} colores no encontrados`, 'info');
+        setTimeout(() => {
+            try {
+                const rawResults = this.colorMatcher.smartCompare(this.primaryData, this.secondaryData);
+                
+                this.comparisonResults = rawResults.map(result => {
+                    const savedState = this.actionStateMap.get(result.id);
+                    if (savedState) {
+                        return {
+                            ...result,
+                            actionTaken: savedState.actionTaken,
+                            actionReason: savedState.reason,
+                            actionTimestamp: savedState.timestamp
+                        };
+                    }
+                    return result;
+                });
+                
+                const stats = this.colorMatcher.getComparisonStats(this.comparisonResults);
+                this.updateStats(stats);
+                this.updateStatsBar(stats);
+                
+                this.saveToHistory(stats);
+                this.filterResults();
+                
+                // ✅ GUARDAR ESTADO DESPUÉS DE COMPARAR
+                this.saveFullState();
+                
+                this.uiRenderer.showToast(`🔍 Comparación completada: ${stats.differences} diferencias, ${stats.missing} no encontrados`, 'info');
+            } finally {
+                this.showLoading(false);
+            }
+        }, 100);
     }
     
     updateStats(stats) {
@@ -120,12 +333,35 @@ class AlphaColorMatch {
         document.getElementById('diffCount').textContent = stats.differences;
     }
     
+    updateStatsBar(stats) {
+        const container = document.getElementById('statsBarContainer');
+        const fill = document.getElementById('statsBarFill');
+        const matchPercent = document.getElementById('matchPercent');
+        const diffPercent = document.getElementById('diffPercent');
+        const missingPercent = document.getElementById('missingPercent');
+        
+        if (stats.total > 0) {
+            container.style.display = 'block';
+            const matchPct = (stats.matches / stats.total * 100).toFixed(0);
+            const diffPct = (stats.differences / stats.total * 100).toFixed(0);
+            const missingPct = (stats.missing / stats.total * 100).toFixed(0);
+            
+            matchPercent.textContent = matchPct;
+            diffPercent.textContent = diffPct;
+            missingPercent.textContent = missingPct;
+            fill.style.width = `${matchPct}%`;
+        } else {
+            container.style.display = 'none';
+        }
+    }
+    
     filterResults() {
         let filtered = [...this.comparisonResults];
         if (this.currentFilter !== 'all') {
             filtered = filtered.filter(item => item.status === this.currentFilter);
         }
-        const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+        
+        const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
         if (searchTerm) {
             filtered = filtered.filter(item => {
                 return item.name.toLowerCase().includes(searchTerm) ||
@@ -137,7 +373,26 @@ class AlphaColorMatch {
         this.uiRenderer.renderComparisonTable(filtered, this);
     }
     
-    // ========== MÉTODOS PARA ACCIONES (NO REASIGNAR EN WINDOW) ==========
+    // ============================================================
+    // MÉTODOS DE ACCIONES
+    // ============================================================
+    
+    saveActionState(colorId, actionTaken, reason = '') {
+        this.actionStateMap.set(colorId, {
+            actionTaken: actionTaken,
+            reason: reason,
+            timestamp: new Date().toISOString()
+        });
+        console.log(`✅ Estado guardado: ${colorId} -> ${actionTaken}`);
+        this.saveFullState();
+    }
+    
+    removeActionState(colorId) {
+        this.actionStateMap.delete(colorId);
+        console.log(`🗑️ Estado eliminado: ${colorId}`);
+        this.saveFullState();
+    }
+    
     showReplaceConfirm(colorId) {
         const color = this.comparisonResults.find(c => c.id === colorId);
         if (!color) return;
@@ -196,15 +451,17 @@ class AlphaColorMatch {
                 cmyk: [...item.cmykSecondary],
                 lab: item.labSecondary ? [...item.labSecondary] : (item.labPrimary || [0, 0, 0])
             };
-            const resultItem = this.comparisonResults.find(r => r.id === item.id);
-            if (resultItem) resultItem.actionTaken = 'replace';
+            
+            this.saveActionState(item.id, 'replace', reason);
             this.compareFiles();
             this.saveActionToHistory('replace', item.id, item.name, reason);
-            this.uiRenderer.showToast(`🔄 Color "${item.name}" reemplazado con valores del secundario`, 'success');
+            this.uiRenderer.showToast(`🔄 Color "${item.name}" reemplazado`, 'success');
         }
     }
     
     keepColor(item, reason = '') {
+        console.log(`🔵 Manteniendo color: ${item.id} - ${item.name}`);
+        
         const actionId = `action_${this.actionCounter++}`;
         this.actionHistory.push({
             id: actionId,
@@ -215,11 +472,22 @@ class AlphaColorMatch {
             previousState: null,
             reason: reason
         });
-        const resultItem = this.comparisonResults.find(r => r.id === item.id);
-        if (resultItem) resultItem.actionTaken = 'keep';
+        
+        this.saveActionState(item.id, 'keep', reason);
+        
+        const resultIndex = this.comparisonResults.findIndex(r => r.id === item.id);
+        if (resultIndex !== -1) {
+            this.comparisonResults[resultIndex] = {
+                ...this.comparisonResults[resultIndex],
+                actionTaken: 'keep',
+                actionReason: reason,
+                actionTimestamp: new Date().toISOString()
+            };
+        }
+        
         this.filterResults();
         this.saveActionToHistory('keep', item.id, item.name, reason);
-        this.uiRenderer.showToast(`💾 Valor principal mantenido para "${item.name}". Puedes deshacer si fue un error.`, 'undo');
+        this.uiRenderer.showToast(`💾 Valor principal mantenido para "${item.name}"`, 'success');
     }
     
     addMissingColor(item, reason = '') {
@@ -241,11 +509,11 @@ class AlphaColorMatch {
             reason: reason
         });
         this.primaryData.push(newColor);
-        const resultItem = this.comparisonResults.find(r => r.id === item.id);
-        if (resultItem) resultItem.actionTaken = 'add';
+        
+        this.saveActionState(item.id, 'add', reason);
         this.compareFiles();
         this.saveActionToHistory('add', item.id, item.name, reason);
-        this.uiRenderer.showToast(`✅ Color "${item.name}" agregado a la referencia principal`, 'success');
+        this.uiRenderer.showToast(`✅ Color "${item.name}" agregado`, 'success');
     }
     
     undoAction(colorId, actionType, reason = '') {
@@ -254,6 +522,7 @@ class AlphaColorMatch {
             this.uiRenderer.showToast('❌ No se pudo deshacer la acción', 'error');
             return;
         }
+        
         if (action.type === 'replace' && action.previousState) {
             const index = this.primaryData.findIndex(p => p.id === colorId);
             if (index !== -1) {
@@ -264,21 +533,99 @@ class AlphaColorMatch {
                     lab: [...action.previousState.lab]
                 };
             }
-        } else if (action.type === 'keep') {
-            const resultItem = this.comparisonResults.find(r => r.id === colorId);
-            if (resultItem) delete resultItem.actionTaken;
         } else if (action.type === 'add') {
             const index = this.primaryData.findIndex(p => p.id === colorId);
             if (index !== -1) this.primaryData.splice(index, 1);
-            const resultItem = this.comparisonResults.find(r => r.id === colorId);
-            if (resultItem) delete resultItem.actionTaken;
         }
+        
+        this.removeActionState(colorId);
+        
+        const resultIndex = this.comparisonResults.findIndex(r => r.id === colorId);
+        if (resultIndex !== -1) {
+            delete this.comparisonResults[resultIndex].actionTaken;
+            delete this.comparisonResults[resultIndex].actionReason;
+            delete this.comparisonResults[resultIndex].actionTimestamp;
+        }
+        
         const actionIndex = this.actionHistory.findIndex(a => a.id === action.id);
         if (actionIndex !== -1) this.actionHistory.splice(actionIndex, 1);
+        
         this.saveActionToHistory('undo', colorId, action.colorName, `Se deshizo acción de ${actionType}. Motivo: ${reason}`);
-        this.compareFiles();
-        this.uiRenderer.showToast(`↩️ Se ha deshecho la acción de ${actionType === 'keep' ? 'mantener' : actionType === 'replace' ? 'reemplazar' : 'agregar'} para "${action.colorName}"`, 'success');
+        this.filterResults();
+        
+        this.uiRenderer.showToast(`↩️ Se deshizo ${actionType === 'keep' ? 'mantener' : actionType === 'replace' ? 'reemplazo' : 'adición'} para "${action.colorName}"`, 'success');
     }
+    
+    replaceAllColors() {
+        const diffColors = this.comparisonResults.filter(item => 
+            item.status === 'diff' && !item.actionTaken && !this.actionStateMap.has(item.id)
+        );
+        
+        if (diffColors.length === 0) {
+            this.uiRenderer.showToast('⚠️ No hay colores con diferencias para reemplazar', 'warning');
+            return;
+        }
+        
+        const confirmMsg = `¿Reemplazar TODOS los ${diffColors.length} colores con diferencias por los valores del archivo secundario?`;
+        
+        if (confirm(confirmMsg)) {
+            this.showLoading(true);
+            
+            setTimeout(() => {
+                try {
+                    let replacedCount = 0;
+                    
+                    for (const color of diffColors) {
+                        const index = this.primaryData.findIndex(p => 
+                            p.id === color.id || 
+                            this.colorMatcher.normalizeName(p.name) === this.colorMatcher.normalizeName(color.name)
+                        );
+                        
+                        if (index !== -1) {
+                            const previousState = {
+                                id: color.id,
+                                name: color.name,
+                                cmyk: [...this.primaryData[index].cmyk],
+                                lab: [...this.primaryData[index].lab]
+                            };
+                            
+                            const actionId = `action_${this.actionCounter++}`;
+                            this.actionHistory.push({
+                                id: actionId,
+                                type: 'replace',
+                                colorId: color.id,
+                                colorName: color.name,
+                                timestamp: new Date().toISOString(),
+                                previousState: previousState,
+                                reason: 'Reemplazo masivo'
+                            });
+                            
+                            this.primaryData[index] = {
+                                id: color.id,
+                                name: color.name,
+                                cmyk: [...color.cmykSecondary],
+                                lab: color.labSecondary ? [...color.labSecondary] : (color.labPrimary || [0, 0, 0])
+                            };
+                            
+                            this.saveActionState(color.id, 'replace', 'Reemplazo masivo');
+                            replacedCount++;
+                        }
+                    }
+                    
+                    this.saveActionToHistory('replace_all', 'all', `${replacedCount} colores`, `Reemplazo masivo`);
+                    this.compareFiles();
+                    
+                    this.uiRenderer.showToast(`⚡ Se reemplazaron ${replacedCount} colores`, 'success');
+                } finally {
+                    this.showLoading(false);
+                }
+            }, 100);
+        }
+    }
+    
+    // ============================================================
+    // HISTORIAL Y EXPORTACIÓN
+    // ============================================================
     
     saveActionToHistory(actionType, colorId, colorName, reason) {
         const history = this.dataManager.getHistory();
@@ -309,7 +656,7 @@ class AlphaColorMatch {
         a.download = `alpha_comparison_${new Date().toISOString().slice(0,19)}.txt`;
         a.click();
         URL.revokeObjectURL(url);
-        this.uiRenderer.showToast('📥 Resultados exportados exitosamente', 'success');
+        this.uiRenderer.showToast('📥 Resultados exportados', 'success');
     }
     
     saveToHistory(stats) {
@@ -339,20 +686,33 @@ class AlphaColorMatch {
         }
     }
     
+    // ============================================================
+    // LIMPIEZA Y UTILIDADES
+    // ============================================================
+    
     clearAll() {
-        if (confirm('¿Limpiar todos los datos cargados?')) {
+        if (confirm('¿Limpiar todos los datos cargados? Esta acción eliminará los datos guardados.')) {
             this.primaryData = [];
             this.secondaryData = [];
             this.comparisonResults = [];
             this.currentFilter = 'all';
             this.actionHistory = [];
+            this.actionStateMap.clear();
+            this.searchTerm = '';
+            
+            this.clearFullState();
+            
             document.getElementById('primaryFileInput').value = '';
             document.getElementById('secondaryFileInput').value = '';
             document.getElementById('primaryFileInfo').querySelector('.filename').textContent = 'Ningún archivo cargado';
             document.getElementById('secondaryFileInfo').querySelector('.filename').textContent = 'Ningún archivo cargado';
             document.getElementById('primaryCount').textContent = '0';
             document.getElementById('secondaryCount').textContent = '0';
-            document.getElementById('searchInput').value = '';
+            
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) searchInput.value = '';
+            
+            document.getElementById('statsBarContainer').style.display = 'none';
             document.querySelectorAll('.filter-tab').forEach(tab => {
                 if (tab.dataset.filter === 'all') tab.classList.add('active');
                 else tab.classList.remove('active');
@@ -377,7 +737,7 @@ class AlphaColorMatch {
         a.download = `alpha_color_data_${new Date().toISOString().slice(0,19)}.txt`;
         a.click();
         URL.revokeObjectURL(url);
-        this.uiRenderer.showToast('✨ Archivo TXT generado exitosamente', 'success');
+        this.uiRenderer.showToast('✨ Archivo TXT generado', 'success');
     }
     
     switchView(view) {

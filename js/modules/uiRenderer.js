@@ -2,7 +2,7 @@ export class UIRenderer {
     constructor(app) {
         this.app = app;
         this.creatorRows = [];
-        this.pendingActions = new Map(); // Almacena acciones pendientes para deshacer
+        this.pendingActions = new Map();
     }
     
     showToast(message, type = 'info') {
@@ -18,25 +18,16 @@ export class UIRenderer {
             undo: '↩️'
         };
         
-        // Si es un mensaje con opción de deshacer
-        if (type === 'undo' && message.includes('Mantener')) {
-            toast.innerHTML = `${icons.undo} ${message}`;
-            toast.style.cursor = 'pointer';
-            toast.style.borderLeftColor = '#f59e0b';
-            toast.onclick = () => {
-                const actionId = toast.dataset.actionId;
-                if (actionId && this.app.undoLastAction) {
-                    this.app.undoLastAction(actionId);
-                }
-                toast.remove();
-            };
-        } else {
-            toast.innerHTML = `${icons[type] || 'ℹ️'} ${message}`;
-        }
-        
+        toast.innerHTML = `${icons[type] || 'ℹ️'} ${message}`;
         container.appendChild(toast);
-        
         setTimeout(() => toast.remove(), 4000);
+    }
+    
+    cmykToRgb(c, m, y, k) {
+        const r = 255 * (1 - c / 100) * (1 - k / 100);
+        const g = 255 * (1 - m / 100) * (1 - k / 100);
+        const b = 255 * (1 - y / 100) * (1 - k / 100);
+        return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
     }
     
     renderComparisonTable(results, app) {
@@ -45,7 +36,7 @@ export class UIRenderer {
         if (results.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="6" class="empty-state">
+                    <td colspan="7" class="empty-state">
                         <div class="empty-icon">🔍</div>
                         <p>No se encontraron resultados</p>
                     </td>
@@ -55,27 +46,63 @@ export class UIRenderer {
         }
         
         tbody.innerHTML = results.map((item, idx) => {
-            const statusClass = item.status === 'match' ? 'status-match' : 
-                               (item.status === 'diff' ? 'status-diff' : 'status-missing');
+            // ============================================================
+            // ✅ DEFINICIÓN DE VARIABLES ANTES DE USARLAS
+            // ============================================================
             
+            // ✅ Estado de acción - CRÍTICO: detectar 'keep', 'replace', 'add'
+            const hasActionTaken = item.actionTaken === 'keep' || 
+                                   item.actionTaken === 'replace' || 
+                                   item.actionTaken === 'add';
+            
+            // ✅ Texto de acción tomada
+            let actionTakenText = '';
+            if (item.actionTaken === 'keep') {
+                actionTakenText = '🔒 Valor principal mantenido';
+            } else if (item.actionTaken === 'replace') {
+                actionTakenText = '🔄 Valor actualizado con secundario';
+            } else if (item.actionTaken === 'add') {
+                actionTakenText = '➕ Color agregado';
+            }
+            
+            // ✅ Clase de estado
+            let statusClass = '';
             let statusText = '';
-            
             if (item.status === 'match') {
+                statusClass = 'status-match';
                 statusText = '✅ Coincidencia exacta';
             } else if (item.status === 'diff') {
+                statusClass = 'status-diff';
                 statusText = '⚠️ Valores diferentes';
             } else {
+                statusClass = 'status-missing';
                 statusText = '❌ NO ENCONTRADO';
             }
             
-            const diffHighlight = item.status === 'diff' ? 'diff-highlight' : 
-                                 (item.status === 'missing' ? 'missing-highlight' : '');
+            // ✅ Clase de resaltado
+            let diffHighlight = '';
+            if (item.status === 'diff') {
+                diffHighlight = 'diff-highlight';
+            } else if (item.status === 'missing') {
+                diffHighlight = 'missing-highlight';
+            }
             
-            // Verificar si ya se tomó una acción en este color
-            const hasActionTaken = item.actionTaken === 'keep' || item.actionTaken === 'replace';
-            const actionTakenText = item.actionTaken === 'keep' ? '🔒 Valor principal mantenido' : 
-                                   (item.actionTaken === 'replace' ? '🔄 Valor actualizado' : '');
+            // ✅ Severidad de diferencia
+            let diffSeverityClass = '';
+            if (item.status === 'diff' && item.diffPercentage) {
+                const diffPct = parseFloat(item.diffPercentage);
+                if (diffPct < 5) diffSeverityClass = 'diff-severity-low';
+                else if (diffPct < 15) diffSeverityClass = 'diff-severity-medium';
+                else diffSeverityClass = 'diff-severity-high';
+            }
             
+            // ✅ Swatch de color
+            const cmykForSwatch = item.cmykPrimary || item.cmykSecondary;
+            const swatchColor = cmykForSwatch ? 
+                this.cmykToRgb(cmykForSwatch[0], cmykForSwatch[1], cmykForSwatch[2], cmykForSwatch[3]) : 
+                '#2d3748';
+            
+            // ✅ CMYK Display
             let cmykDisplay = '';
             if (item.status === 'missing') {
                 cmykDisplay = `
@@ -104,6 +131,7 @@ export class UIRenderer {
                 `;
             }
             
+            // ✅ LAB Display
             let labDisplay = '';
             if (item.status !== 'missing' && item.labPrimary && item.labSecondary) {
                 labDisplay = `
@@ -124,6 +152,7 @@ export class UIRenderer {
                 `;
             }
             
+            // ✅ Detalles de diferencia
             const diffDetails = item.diffDetails && !hasActionTaken ? 
                 `<div class="diff-details">
                     📊 Diferencia: C:${item.diffDetails.cyan} | M:${item.diffDetails.magenta} | Y:${item.diffDetails.yellow} | K:${item.diffDetails.black}
@@ -136,20 +165,19 @@ export class UIRenderer {
             const actionTakenHtml = actionTakenText ? 
                 `<div class="action-taken">${actionTakenText}</div>` : '';
             
+            // ✅ BOTONES DE ACCIÓN - CRÍTICO: Si ya se tomó acción, solo mostrar "Deshacer"
             let actions = '';
-            
-            // Si ya se tomó una acción, mostrar solo botón de deshacer
             if (hasActionTaken) {
+                // ✅ Si ya hay acción tomada, solo mostrar botón deshacer
                 actions = `
                     <div class="action-buttons-cell">
                         <button class="small-btn btn-undo" onclick="window.app.showUndoDialog('${item.id}', '${item.actionTaken}')">
-                            ↩️ Deshacer (${item.actionTaken === 'keep' ? 'Mantener' : 'Reemplazar'})
+                            ↩️ Deshacer (${item.actionTaken === 'keep' ? 'Mantener' : item.actionTaken === 'replace' ? 'Reemplazar' : 'Agregar'})
                         </button>
                     </div>
                 `;
-            } 
-            // Si hay diferencias y no se ha tomado acción
-            else if (item.status === 'diff') {
+            } else if (item.status === 'diff') {
+                // ✅ Si hay diferencias y no hay acción, mostrar ambos botones
                 actions = `
                     <div class="action-buttons-cell">
                         <button class="small-btn btn-replace" onclick="window.app.showReplaceConfirm('${item.id}')">
@@ -160,9 +188,7 @@ export class UIRenderer {
                         </button>
                     </div>
                 `;
-            } 
-            // Si el color no existe
-            else if (item.status === 'missing') {
+            } else if (item.status === 'missing') {
                 actions = `
                     <div class="action-buttons-cell">
                         <button class="small-btn btn-success" onclick="window.app.showAddConfirm('${item.id}')">
@@ -172,9 +198,15 @@ export class UIRenderer {
                 `;
             }
             
+            // ✅ RENDERIZAR FILA
             return `
-                <tr class="${diffHighlight}" data-color-id="${item.id}">
+                <tr class="${diffHighlight} ${diffSeverityClass}" data-color-id="${item.id}">
                     <td><strong>${item.id}</strong></td>
+                    <td>
+                        <div class="color-swatch" style="background: ${swatchColor};" 
+                             data-tooltip="CMYK: ${cmykForSwatch ? cmykForSwatch.map(v => v.toFixed(1)).join(', ') : 'N/A'}">
+                        </div>
+                    </td>
                     <td>
                         <strong>${item.name}</strong>
                         ${item.originalName && item.originalName !== item.name ? 
@@ -197,9 +229,11 @@ export class UIRenderer {
         window.app = app;
     }
     
-    // Modal para observaciones al deshacer acción
+    // ============================================================
+    // MÉTODOS DE MODALES (sin cambios)
+    // ============================================================
+    
     showUndoModal(colorId, actionType, onConfirm) {
-        // Crear modal
         const modal = document.createElement('div');
         modal.className = 'modal-overlay';
         modal.innerHTML = `
@@ -209,7 +243,7 @@ export class UIRenderer {
                     <button class="modal-close">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <p>Estás a punto de deshacer la acción: <strong>${actionType === 'keep' ? 'Mantener valor principal' : 'Reemplazar con valor secundario'}</strong></p>
+                    <p>Estás a punto de deshacer la acción: <strong>${actionType === 'keep' ? 'Mantener valor principal' : actionType === 'replace' ? 'Reemplazar con valor secundario' : 'Agregar color'}</strong></p>
                     <p>Color: <strong>${colorId}</strong></p>
                     <div class="form-group">
                         <label for="undoReason">Motivo del cambio (opcional):</label>
@@ -224,11 +258,8 @@ export class UIRenderer {
         `;
         
         document.body.appendChild(modal);
-        
-        // Animación de entrada
         setTimeout(() => modal.classList.add('active'), 10);
         
-        // Eventos
         const closeModal = () => {
             modal.classList.remove('active');
             setTimeout(() => modal.remove(), 300);
@@ -246,13 +277,11 @@ export class UIRenderer {
             closeModal();
         };
         
-        // Cerrar al hacer clic fuera
         modal.onclick = (e) => {
             if (e.target === modal) closeModal();
         };
     }
     
-    // Mostrar confirmación para reemplazar
     showReplaceConfirm(colorId, onConfirm) {
         const modal = document.createElement('div');
         modal.className = 'modal-overlay';
@@ -302,7 +331,6 @@ export class UIRenderer {
         };
     }
     
-    // Mostrar confirmación para mantener valor
     showKeepConfirm(colorId, onConfirm) {
         const modal = document.createElement('div');
         modal.className = 'modal-overlay';
@@ -352,7 +380,6 @@ export class UIRenderer {
         };
     }
     
-    // Mostrar confirmación para agregar color
     showAddConfirm(colorId, colorName, onConfirm) {
         const modal = document.createElement('div');
         modal.className = 'modal-overlay';
@@ -401,7 +428,6 @@ export class UIRenderer {
         };
     }
     
-    // Resto de métodos (renderHistory, initCreatorTable, etc.) se mantienen igual...
     renderHistory(history) {
         const container = document.getElementById('historyList');
         
@@ -437,7 +463,7 @@ export class UIRenderer {
                             ${item.actionsLog.map(log => `
                                 <div class="action-log-item">
                                     <span class="action-date">${new Date(log.timestamp).toLocaleTimeString()}</span>
-                                    <span class="action-type ${log.type}">${log.type === 'keep' ? '💾 Mantener' : log.type === 'replace' ? '🔄 Reemplazar' : '➕ Agregar'}</span>
+                                    <span class="action-type ${log.type}">${log.type === 'keep' ? '💾 Mantener' : log.type === 'replace' ? '🔄 Reemplazar' : log.type === 'add' ? '➕ Agregar' : '↩️ Deshacer'}</span>
                                     <span class="action-color">${log.colorId}: ${log.colorName}</span>
                                     ${log.reason ? `<span class="action-reason">📝 ${log.reason}</span>` : ''}
                                 </div>
@@ -449,7 +475,7 @@ export class UIRenderer {
         `).join('');
     }
     
-    // Métodos de creator (se mantienen igual)
+    // Métodos del creador de archivos (sin cambios)
     initCreatorTable() {
         this.resetCreatorTable();
     }
