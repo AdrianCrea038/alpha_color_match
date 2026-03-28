@@ -5,6 +5,7 @@
 // - Pares equivalentes comparten los mismos valores CMYK
 // - Validación de pendientes funciona correctamente
 // - Nombre de archivo personalizable al exportar
+// - Detección inteligente de NK's por patrones
 // ============================================================
 
 class AlphaColorMatch {
@@ -74,7 +75,6 @@ class AlphaColorMatch {
     }
     
     buildEquivalenceGroups() {
-        // Crear un mapa de nombre -> grupo
         const nameToGroup = new Map();
         const groups = [];
         
@@ -99,7 +99,6 @@ class AlphaColorMatch {
             nameToGroup.set(norm2, group);
         }
         
-        // Para los nombres que son equivalentes a sí mismos (sin pareja)
         for (let [name1, name2] of this.equivalencyTable) {
             if (name1 === name2) {
                 const norm = this.normalizeBaseName(name1);
@@ -267,13 +266,78 @@ class AlphaColorMatch {
     
     extractNK(fullName) {
         if (!fullName) return null;
-        const match = fullName.match(/NK\d+$/i);
-        return match ? match[0].toUpperCase() : null;
+        
+        const words = fullName.trim().split(/\s+/);
+        if (words.length === 0) return null;
+        
+        const patterns = [
+            {
+                name: 'NK_pattern',
+                test: (str) => /^NK[-]?[A-Z0-9]+/i.test(str),
+                minWords: 1,
+                maxWords: 3
+            },
+            {
+                name: 'numbers_only',
+                test: (str) => /^[\d\-]{4,12}$/.test(str),
+                minWords: 1,
+                maxWords: 1
+            },
+            {
+                name: 'alphanumeric',
+                test: (str) => /^[A-Z]{1,4}[\d]{1,4}[A-Z]{0,2}$/i.test(str) || /^[\d]{1,4}[A-Z]{1,4}$/i.test(str),
+                minWords: 1,
+                maxWords: 1
+            },
+            {
+                name: 'letter_number',
+                test: (str) => /^[A-Z][\d]{3,6}[A-Z]{0,2}$/i.test(str),
+                minWords: 1,
+                maxWords: 1
+            },
+            {
+                name: 'number_letter',
+                test: (str) => /^[\d]{3,6}[A-Z]{1,4}$/i.test(str),
+                minWords: 1,
+                maxWords: 1
+            },
+            {
+                name: 'specific_words',
+                test: (str) => ['STANDARD', 'COLORS', 'GREY', 'WHITE', 'BLACK', 'BLUE', 'GOLD', 'SILVER'].includes(str.toUpperCase()),
+                minWords: 1,
+                maxWords: 1
+            }
+        ];
+        
+        for (let wordCount = 1; wordCount <= 3; wordCount++) {
+            if (words.length < wordCount) continue;
+            
+            const candidate = words.slice(-wordCount).join(' ');
+            
+            for (const pattern of patterns) {
+                if (wordCount >= pattern.minWords && wordCount <= pattern.maxWords) {
+                    if (pattern.test(candidate)) {
+                        console.log(`🔍 NK detectado: "${candidate}" (patrón: ${pattern.name})`);
+                        return candidate;
+                    }
+                }
+            }
+        }
+        
+        const lastWord = words[words.length - 1];
+        console.log(`⚠️ NK no detectado con patrones, usando última palabra: "${lastWord}"`);
+        return lastWord;
     }
     
     extractBaseName(fullName) {
         if (!fullName) return '';
-        const base = fullName.replace(/\s+NK\d+$/i, '').trim();
+        
+        const nk = this.extractNK(fullName);
+        if (!nk) return this.normalizeBaseName(fullName);
+        
+        const nkPattern = new RegExp(`\\s+${nk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+        const base = fullName.replace(nkPattern, '').trim();
+        
         return this.normalizeBaseName(base);
     }
     
@@ -409,7 +473,6 @@ class AlphaColorMatch {
     }
     
     findMatches() {
-        // Índices por NK
         const primaryByNK = new Map();
         const secondaryByNK = new Map();
         
@@ -441,15 +504,12 @@ class AlphaColorMatch {
         const allNKs = new Set([...primaryByNK.keys(), ...secondaryByNK.keys()]);
         let groupCounter = 0;
         
-        // Para cada NK, agrupar por equivalencia
         for (const nk of allNKs) {
             const primaryColors = primaryByNK.get(nk) || [];
             const secondaryColors = secondaryByNK.get(nk) || [];
             
-            // Agrupar por grupo de equivalencia
-            const groups = new Map(); // key = grupo de equivalencia, value = { primarios, secundarios }
+            const groups = new Map();
             
-            // Procesar primarios
             for (const pc of primaryColors) {
                 const groupKey = this.getEquivalenceGroup(pc.baseName);
                 const groupIdKey = groupKey ? Array.from(groupKey).sort().join('|') : pc.baseName;
@@ -459,7 +519,6 @@ class AlphaColorMatch {
                 groups.get(groupIdKey).primarios.push(pc);
             }
             
-            // Procesar secundarios
             for (const sc of secondaryColors) {
                 const groupKey = this.getEquivalenceGroup(sc.baseName);
                 const groupIdKey = groupKey ? Array.from(groupKey).sort().join('|') : sc.baseName;
@@ -469,13 +528,11 @@ class AlphaColorMatch {
                 groups.get(groupIdKey).secundarios.push(sc);
             }
             
-            // Para cada grupo, crear resultados
             for (const [groupIdKey, group] of groups) {
                 const { primarios, secundarios, groupKey } = group;
                 const actualGroupId = `group_${nk}_${groupCounter++}`;
                 
                 if (primarios.length > 0 && secundarios.length > 0) {
-                    // Ambos tienen colores en este grupo
                     for (const primary of primarios) {
                         for (const secondary of secundarios) {
                             const isExact = primary.baseName === secondary.baseName;
@@ -496,7 +553,6 @@ class AlphaColorMatch {
                         }
                     }
                 } else if (primarios.length > 0) {
-                    // Solo en principal
                     for (const primary of primarios) {
                         if (!processedPrimary.has(primary.id)) {
                             results.push({
@@ -513,7 +569,6 @@ class AlphaColorMatch {
                         }
                     }
                 } else if (secundarios.length > 0) {
-                    // Solo en secundario
                     for (const secondary of secundarios) {
                         if (!processedSecondary.has(secondary.id)) {
                             results.push({
@@ -531,7 +586,6 @@ class AlphaColorMatch {
                     }
                 }
                 
-                // Buscar complementarios faltantes en la tabla
                 if (groupKey && primarios.length > 0) {
                     const existingNames = new Set();
                     for (const p of primarios) existingNames.add(p.baseName);
@@ -539,7 +593,6 @@ class AlphaColorMatch {
                     
                     for (const equivalentName of groupKey) {
                         if (!existingNames.has(equivalentName)) {
-                            // Falta este nombre, usar el primer primario como fuente
                             const sourceColor = primarios[0].colorData;
                             this.autoAddedItems.push({
                                 nk: nk,
@@ -564,131 +617,124 @@ class AlphaColorMatch {
     }
     
     renderResults(results) {
-        const panel = document.getElementById('resultsPanel');
-        const tbody = document.getElementById('resultsTableBody');
-        const statsContainer = document.getElementById('statsBadges');
+    const panel = document.getElementById('resultsPanel');
+    const tbody = document.getElementById('resultsTableBody');
+    const statsContainer = document.getElementById('statsBadges');
+    
+    if (!panel || !tbody) return;
+    
+    panel.style.display = 'block';
+    
+    const exactMatches = results.filter(r => r.matchType === 'exact').length;
+    const equivalentMatches = results.filter(r => r.matchType === 'equivalent').length;
+    const pendingPrimary = results.filter(r => r.matchType === 'pending_primary').length;
+    const pendingSecondary = results.filter(r => r.matchType === 'pending_secondary').length;
+    const selectedCount = this.selectedPending.size;
+    const deletedCount = this.deletedPending.size;
+    
+    statsContainer.innerHTML = `
+        <span class="badge match">✅ Exactas: ${exactMatches}</span>
+        <span class="badge" style="background:#b45309;">🔄 Equivalentes: ${equivalentMatches}</span>
+        <span class="badge missing">❌ Pendientes Principal: ${pendingPrimary}</span>
+        <span class="badge secondary">➕ Pendientes Secundario: ${pendingSecondary}</span>
+        <span class="badge" style="background:#15803d;">✓ Agregados: ${selectedCount}</span>
+        <span class="badge" style="background:#991b1b;">🗑️ Eliminados: ${deletedCount}</span>
+        <span class="badge" style="background:#eab308;">✨ Auto-agregados: ${this.autoAddedItems.length}</span>
+    `;
+    
+    tbody.innerHTML = results.map(item => {
+        let rowClass = '';
+        let statusClass = '';
+        let statusText = '';
+        let actionButton = '';
+        let selectionButtons = '';
+        let cmykPreview = '';
         
-        if (!panel || !tbody) return;
-        
-        panel.style.display = 'block';
-        
-        const exactMatches = results.filter(r => r.matchType === 'exact').length;
-        const equivalentMatches = results.filter(r => r.matchType === 'equivalent').length;
-        const pendingPrimary = results.filter(r => r.matchType === 'pending_primary').length;
-        const pendingSecondary = results.filter(r => r.matchType === 'pending_secondary').length;
-        const selectedCount = this.selectedPending.size;
-        const deletedCount = this.deletedPending.size;
-        
-        statsContainer.innerHTML = `
-            <span class="badge match">✅ Exactas: ${exactMatches}</span>
-            <span class="badge" style="background:#b45309;">🔄 Equivalentes: ${equivalentMatches}</span>
-            <span class="badge missing">❌ Pendientes Principal: ${pendingPrimary}</span>
-            <span class="badge secondary">➕ Pendientes Secundario: ${pendingSecondary}</span>
-            <span class="badge" style="background:#15803d;">✓ Agregados: ${selectedCount}</span>
-            <span class="badge" style="background:#991b1b;">🗑️ Eliminados: ${deletedCount}</span>
-            <span class="badge" style="background:#eab308;">✨ Auto-agregados: ${this.autoAddedItems.length}</span>
-        `;
-        
-        tbody.innerHTML = results.map(item => {
-            let rowClass = '';
-            let statusClass = '';
-            let statusText = '';
-            let actionButton = '';
-            let selectionButtons = '';
-            let cmykPreview = '';
+        if (item.matchType === 'exact' || item.matchType === 'equivalent') {
+            rowClass = item.matchType === 'exact' ? 'style="background: rgba(21, 128, 61, 0.1);"' : 'style="background: rgba(180, 83, 9, 0.1);"';
+            statusClass = item.matchType === 'exact' ? 'match-badge yes' : 'match-badge' + ' style="background:#b45309;"';
+            statusText = item.matchType === 'exact' ? '✅ COINCIDENCIA' : '🔄 EQUIVALENTE';
             
-            if (item.matchType === 'exact' || item.matchType === 'equivalent') {
-                rowClass = item.matchType === 'exact' ? 'style="background: rgba(21, 128, 61, 0.1);"' : 'style="background: rgba(180, 83, 9, 0.1);"';
-                statusClass = item.matchType === 'exact' ? 'match-badge yes' : 'match-badge' + ' style="background:#b45309;"';
-                statusText = item.matchType === 'exact' ? '✅ COINCIDENCIA' : '🔄 EQUIVALENTE';
-                
-                const currentSelection = this.getGroupSelection(item.groupId);
-                const isManual = this.manualGroupSelections.has(item.groupId);
-                
-                const effectiveCmyk = this.getEffectiveCmyk(item.groupId, item.primaryData?.colorData, item.secondaryData?.colorData);
-                if (effectiveCmyk) {
-                    cmykPreview = `<div style="font-size:0.65rem; color:#9ca3af; margin-top:0.25rem;">Valor usado: C:${effectiveCmyk[0].toFixed(1)} M:${effectiveCmyk[1].toFixed(1)} Y:${effectiveCmyk[2].toFixed(1)} K:${effectiveCmyk[3].toFixed(1)}</div>`;
-                }
-                
-                selectionButtons = `
-                    <div class="selection-buttons">
-                        <button class="selection-btn ${currentSelection === 'primary' ? 'active-primary' : ''}" 
-                                onclick="window.app.setGroupSelection('${item.groupId}', 'primary')">
-                            📁 Principal<br>
-                            <span class="cmyk-small">C:${item.primaryData?.colorData.cmyk[0].toFixed(1)} M:${item.primaryData?.colorData.cmyk[1].toFixed(1)} Y:${item.primaryData?.colorData.cmyk[2].toFixed(1)} K:${item.primaryData?.colorData.cmyk[3].toFixed(1)}</span>
-                        </button>
-                        <button class="selection-btn ${currentSelection === 'secondary' ? 'active-secondary' : ''}" 
-                                onclick="window.app.setGroupSelection('${item.groupId}', 'secondary')">
-                            🔄 Secundario<br>
-                            <span class="cmyk-small">C:${item.secondaryData?.colorData.cmyk[0].toFixed(1)} M:${item.secondaryData?.colorData.cmyk[1].toFixed(1)} Y:${item.secondaryData?.colorData.cmyk[2].toFixed(1)} K:${item.secondaryData?.colorData.cmyk[3].toFixed(1)}</span>
-                        </button>
-                        ${isManual ? '<span class="manual-badge" style="font-size:0.6rem; color:#fbbf24;">🔒 Manual</span>' : ''}
-                    </div>
-                `;
-                
-            } else {
-                const isAdded = this.selectedPending.has(item.id);
-                const isDeleted = this.deletedPending.has(item.id);
-                const isDecided = isAdded || isDeleted;
-                
-                if (!isDecided) {
-                    rowClass = 'style="background: rgba(153, 27, 27, 0.1);"';
-                    statusClass = 'match-badge no';
-                    statusText = '❌ PENDIENTE';
-                } else if (isAdded) {
-                    rowClass = 'style="background: rgba(21, 128, 61, 0.2);"';
-                    statusClass = 'match-badge yes';
-                    statusText = '✓ AGREGADO';
-                } else {
-                    rowClass = 'style="background: rgba(153, 27, 27, 0.2);"';
-                    statusClass = 'match-badge no';
-                    statusText = '🗑️ ELIMINADO';
-                }
-                
-                actionButton = `
-                    <div class="pending-buttons">
-                        <button class="small-btn btn-success" 
-                                onclick="window.app.togglePendingAdd('${item.id}')"
-                                ${isAdded ? 'disabled style="opacity:0.5;"' : ''}>
-                            ➕ Agregar
-                        </button>
-                        <button class="small-btn btn-danger" 
-                                onclick="window.app.togglePendingDelete('${item.id}')"
-                                ${isDeleted ? 'disabled style="opacity:0.5;"' : ''}>
-                            🗑️ Eliminar
-                        </button>
-                    </div>
-                `;
-                
-                const colorData = item.primaryData?.colorData || item.secondaryData?.colorData;
-                if (colorData) {
-                    cmykPreview = `<div style="font-size:0.65rem; color:#9ca3af; margin-top:0.25rem;">CMYK: ${colorData.cmyk.map(v => v.toFixed(1)).join(', ')}</div>`;
-                }
+            const currentSelection = this.getGroupSelection(item.groupId);
+            const isManual = this.manualGroupSelections.has(item.groupId);
+            
+            const effectiveCmyk = this.getEffectiveCmyk(item.groupId, item.primaryData?.colorData, item.secondaryData?.colorData);
+            if (effectiveCmyk) {
+                cmykPreview = `<div style="font-size:0.65rem; color:#9ca3af; margin-top:0.25rem;">Valor usado: C:${effectiveCmyk[0].toFixed(1)} M:${effectiveCmyk[1].toFixed(1)} Y:${effectiveCmyk[2].toFixed(1)} K:${effectiveCmyk[3].toFixed(1)}</div>`;
             }
             
-            const primaryName = item.primaryData ? item.primaryData.baseName : '—';
-            const secondaryName = item.secondaryData ? item.secondaryData.baseName : '—';
-            const primaryCmyk = item.primaryData?.colorData?.cmyk;
-            const secondaryCmyk = item.secondaryData?.colorData?.cmyk;
-            
-            return `
-                <tr ${rowClass}>
-                    <td><strong>${item.nk}</strong>${cmykPreview} \n
-                    66<
-
-                        ${primaryName}<br>
-                        ${primaryCmyk ? `<span class="cmyk-small">C:${primaryCmyk[0].toFixed(1)} M:${primaryCmyk[1].toFixed(1)} Y:${primaryCmyk[2].toFixed(1)} K:${primaryCmyk[3].toFixed(1)}</span>` : ''}
-                      </td>
-                      <td>
-                        ${secondaryName}<br>
-                        ${secondaryCmyk ? `<span class="cmyk-small">C:${secondaryCmyk[0].toFixed(1)} M:${secondaryCmyk[1].toFixed(1)} Y:${secondaryCmyk[2].toFixed(1)} K:${secondaryCmyk[3].toFixed(1)}</span>` : ''}
-                      </td>
-                      <td><span class="${statusClass}">${statusText}</span></td>
-                      <td>${selectionButtons || actionButton || '—'}</td>
-                 </tr>
+            selectionButtons = `
+                <div class="selection-buttons">
+                    <button class="selection-btn ${currentSelection === 'primary' ? 'active-primary' : ''}" 
+                            onclick="window.app.setGroupSelection('${item.groupId}', 'primary')">
+                        📁 Principal<br>
+                        <span class="cmyk-small">C:${item.primaryData?.colorData.cmyk[0].toFixed(1)} M:${item.primaryData?.colorData.cmyk[1].toFixed(1)} Y:${item.primaryData?.colorData.cmyk[2].toFixed(1)} K:${item.primaryData?.colorData.cmyk[3].toFixed(1)}</span>
+                    </button>
+                    <button class="selection-btn ${currentSelection === 'secondary' ? 'active-secondary' : ''}" 
+                            onclick="window.app.setGroupSelection('${item.groupId}', 'secondary')">
+                        🔄 Secundario<br>
+                        <span class="cmyk-small">C:${item.secondaryData?.colorData.cmyk[0].toFixed(1)} M:${item.secondaryData?.colorData.cmyk[1].toFixed(1)} Y:${item.secondaryData?.colorData.cmyk[2].toFixed(1)} K:${item.secondaryData?.colorData.cmyk[3].toFixed(1)}</span>
+                    </button>
+                    ${isManual ? '<span class="manual-badge" style="font-size:0.6rem; color:#fbbf24;">🔒 Manual</span>' : ''}
+                </div>
             `;
-        }).join('');
-    }
+            
+        } else {
+            const isAdded = this.selectedPending.has(item.id);
+            const isDeleted = this.deletedPending.has(item.id);
+            const isDecided = isAdded || isDeleted;
+            
+            if (!isDecided) {
+                rowClass = 'style="background: rgba(153, 27, 27, 0.1);"';
+                statusClass = 'match-badge no';
+                statusText = '❌ PENDIENTE';
+            } else if (isAdded) {
+                rowClass = 'style="background: rgba(21, 128, 61, 0.2);"';
+                statusClass = 'match-badge yes';
+                statusText = '✓ AGREGADO';
+            } else {
+                rowClass = 'style="background: rgba(153, 27, 27, 0.2);"';
+                statusClass = 'match-badge no';
+                statusText = '🗑️ ELIMINADO';
+            }
+            
+            actionButton = `
+                <div class="pending-buttons">
+                    <button class="small-btn btn-success" 
+                            onclick="window.app.togglePendingAdd('${item.id}')"
+                            ${isAdded ? 'disabled style="opacity:0.5;"' : ''}>
+                        ➕ Agregar
+                    </button>
+                    <button class="small-btn btn-danger" 
+                            onclick="window.app.togglePendingDelete('${item.id}')"
+                            ${isDeleted ? 'disabled style="opacity:0.5;"' : ''}>
+                        🗑️ Eliminar
+                    </button>
+                </div>
+            `;
+            
+            const colorData = item.primaryData?.colorData || item.secondaryData?.colorData;
+            if (colorData) {
+                cmykPreview = `<div style="font-size:0.65rem; color:#9ca3af; margin-top:0.25rem;">CMYK: ${colorData.cmyk.map(v => v.toFixed(1)).join(', ')}</div>`;
+            }
+        }
+        
+        const primaryName = item.primaryData ? item.primaryData.baseName : '—';
+        const secondaryName = item.secondaryData ? item.secondaryData.baseName : '—';
+        const primaryCmyk = item.primaryData?.colorData?.cmyk;
+        const secondaryCmyk = item.secondaryData?.colorData?.cmyk;
+        
+        return `
+            <tr ${rowClass}>
+                <td><strong>${item.nk}</strong>${cmykPreview}</td>
+                <td>${primaryName}<br>${primaryCmyk ? `<span class="cmyk-small">C:${primaryCmyk[0].toFixed(1)} M:${primaryCmyk[1].toFixed(1)} Y:${primaryCmyk[2].toFixed(1)} K:${primaryCmyk[3].toFixed(1)}</span>` : ''}</td>
+                <td>${secondaryName}<br>${secondaryCmyk ? `<span class="cmyk-small">C:${secondaryCmyk[0].toFixed(1)} M:${secondaryCmyk[1].toFixed(1)} Y:${secondaryCmyk[2].toFixed(1)} K:${secondaryCmyk[3].toFixed(1)}</span>` : ''}</td>
+                <td><span class="${statusClass}">${statusText}</span></td>
+                <td>${selectionButtons || actionButton || '—'}</td>
+            </tr>
+        `;
+    }).join('');
+}
     
     buildExportItems() {
         const exportItems = [];
@@ -701,11 +747,9 @@ class AlphaColorMatch {
                 if (processedGroups.has(item.groupId)) continue;
                 processedGroups.add(item.groupId);
                 
-                // Obtener valores efectivos UNA VEZ para todo el grupo
                 const cmyk = this.getEffectiveCmyk(item.groupId, item.primaryData?.colorData, item.secondaryData?.colorData);
                 const lab = this.getEffectiveLab(item.groupId, item.primaryData?.colorData, item.secondaryData?.colorData);
                 
-                // 1. Color principal
                 if (item.primaryData) {
                     exportItems.push({
                         name: item.primaryData.colorData.name,
@@ -715,7 +759,6 @@ class AlphaColorMatch {
                     });
                 }
                 
-                // 2. Color secundario (para equivalentes)
                 if (item.matchType === 'equivalent' && item.secondaryData) {
                     exportItems.push({
                         name: item.secondaryData.colorData.name,
@@ -725,7 +768,6 @@ class AlphaColorMatch {
                     });
                 }
                 
-                // 3. Complementarios automáticos del grupo (usando los mismos valores efectivos)
                 const groupAutos = this.autoAddedItems.filter(a => a.groupId === item.groupId);
                 for (const auto of groupAutos) {
                     const fullName = `${auto.baseName} ${auto.nk}`;
@@ -739,7 +781,6 @@ class AlphaColorMatch {
             }
         }
         
-        // Agregar pendientes seleccionados (al final)
         for (const item of this.results) {
             if (this.selectedPending.has(item.id)) {
                 if (item.primaryData) {
@@ -850,12 +891,10 @@ class AlphaColorMatch {
     doExport(exportItems) {
         const content = this.generateCGATSContent(exportItems);
         
-        // Obtener nombre personalizado del input
         const fileNameInput = document.getElementById('exportFileName');
         let baseFileName = 'alpha_color_export';
         
         if (fileNameInput && fileNameInput.value.trim() !== '') {
-            // Sanitizar nombre de archivo (solo letras, números, guiones y guiones bajos)
             baseFileName = fileNameInput.value.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
             if (baseFileName === '') baseFileName = 'alpha_color_export';
         }

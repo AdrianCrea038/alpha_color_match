@@ -1,0 +1,161 @@
+.creator-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.creator-header h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #eab308;
+}
+
+.creator-controls {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.table-wrapper {
+    overflow-x: auto;
+    max-height: 550px;
+    overflow-y: auto;
+}
+
+.creator-table {
+    margin-top: 1rem;
+}
+
+.creator-table .data-table td {
+    padding: 0.5rem;
+    vertical-align: middle;
+}
+
+.creator-table input {
+    width: 100%;
+    background: #1e1e2c;
+    border: 1px solid #4b5563;
+    color: #e2e8f0;
+    border-radius: 0.4rem;
+    padding: 0.4rem;
+    font-size: 0.75rem;
+    font-family: monospace;
+    transition: all 0.2s;
+}
+
+.creator-table input:focus {
+    outline: none;
+    border-color: #4f46e5;
+    box-shadow: 0 0 5px rgba(79, 70, 229, 0.3);
+}
+
+.creator-table input:disabled {
+    background: #2d3748;
+    color: #9ca3af;
+    cursor: not-allowed;
+}
+
+.creator-table tr.complementary-row {
+    background: rgba(180, 83, 9, 0.1);
+    border-left: 3px solid #b45309;
+}
+
+.creator-table tr.complementary-row td {
+    border-bottom-color: #2d3748;
+}
+
+.complementary-badge {
+    display: inline-block;
+    font-size: 0.6rem;
+    background: #b45309;
+    color: white;
+    padding: 0.1rem 0.3rem;
+    border-radius: 0.25rem;
+    margin-left: 0.5rem;
+    white-space: nowrap;
+}
+
+.row-number {
+    font-weight: bold;
+    color: #fbbf24;
+    text-align: center;
+}
+
+.actions-cell {
+    display: flex;
+    gap: 0.3rem;
+    justify-content: center;
+    white-space: nowrap;
+}
+
+.delete-btn, .preview-btn, .btn-locked {
+    width: 28px;
+    height: 28px;
+    border-radius: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+    font-size: 0.75rem;
+}
+
+.delete-btn {
+    background: #991b1b;
+    color: white;
+}
+
+.delete-btn:hover {
+    background: #7f1a1a;
+    transform: translateY(-1px);
+}
+
+.preview-btn {
+    background: #2d4ed6;
+    color: white;
+}
+
+.preview-btn:hover {
+    background: #1e40af;
+    transform: translateY(-1px);
+}
+
+.btn-locked {
+    background: #4b5563;
+    color: #9ca3af;
+    cursor: not-allowed;
+}
+
+@media (max-width: 1200px) {
+    .creator-table {
+        overflow-x: auto;
+    }
+    
+    .creator-table .data-table {
+        min-width: 800px;
+    }
+}
+
+@media (max-width: 768px) {
+    .creator-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .creator-controls {
+        width: 100%;
+    }
+    
+    .creator-controls button {
+        flex: 1;
+    }
+    
+    .actions-cell {
+        flex-direction: row;
+    }
+}
