@@ -6,7 +6,13 @@
 // - Validación de pendientes funciona correctamente
 // - Nombre de archivo personalizable al exportar
 // - Detección inteligente de NK's por patrones
+// - Tabla de equivalencia expandida a 4 columnas
+// - Normalización elimina "TM" para mejor coincidencia
+// - Soporte para punto después del número correlativo (ej: "1. Nombre")
+// - Etiquetas HTML correctas en renderResults
 // ============================================================
+
+import { CreatorView } from './modules/views/creatorView.js';
 
 class AlphaColorMatch {
     constructor() {
@@ -19,54 +25,69 @@ class AlphaColorMatch {
         this.manualGroupSelections = new Set();
         this.autoAddedItems = [];
         
-        // Tabla de equivalencia de nombres (normalizada)
-        this.equivalencyTable = new Map([
-            ["10F TM WHITE", "10A WHITE"],
-            ["03S TM BLACK", "00A BLACK"],
-            ["01P TM DK STEEL GREY", "01P DK STEEL GREY"],
-            ["03T BLUE GREY", "01V WOLF GREY"],
-            ["05X TM ANTHRACITE", "06F ANTHRACITE"],
-            ["2AQ TM BROWN", "20Q DARK CINDER"],
-            ["2DH TM MEDIUM OLIVE", "2DH MEDIUM OLIVE"],
-            ["3EM TM KELLY GREEN", "31W CLASSIC GREEN"],
-            ["31V TM DARK GREEN", "39Y GORGE GREEN"],
-            ["43V TM NAVY", "41S COLLEGE NAVY"],
-            ["44A TM TIDAL BLUE", "44A TIDAL BLUE"],
-            ["45W TM BLUSTERY", "45W BLUSTERY"],
-            ["4ES TM AERO BLUE", "4ES AERO BLUE"],
-            ["49V TM ROYAL", "4EV GAME ROYAL"],
-            ["4CV TM LIGHT BLUE", "4EY VALOR BLUE"],
-            ["52V TM PURPLE", "56N FIELD PURPLE"],
-            ["64V TM SCARLET", "65N UNIVERSITY RED"],
-            ["67Y TM DARK MAROON", "66P DEEP MAROON"],
-            ["6DR TM PINK FIRE II", "66Z PINK FIRE II"],
+        // Tabla de equivalencia de nombres expandida a 4 columnas
+        this.equivalencyRows = [
+            ["00A BLACK", "03S TM Black", "03T TM BLACK"],
+            ["06F ANTHRACITE", "05X TM Anthracite"],
+            ["01V WOLF GREY", "03T Blue Grey", "03T TM Blue Grey"],
+            ["01P DK STEEL GREY", "01P DARK STEEL GREY"],
+            ["08Q TM PEWTER GREY", "03T PEWTER GREY", "08Q PEWTER GREY", "03T TM PEWTER GREY"],
+            ["06H FLINT GREY"],
+            ["10F WHITE", "10F TM WHITE"],
+            ["15A TM NATURAL", "15A NATURAL"],
+            ["77C GOLD"],
+            ["79W TEAM GOLD", "79X TM Vegas Gold"],
+            ["79Y TM Bright Gold", "79Q SUNDOWN"],
+            ["79V CLUB GOLD"],
+            ["76I UNIVERSITY GOLD"],
+            ["79U GOLD DART"],
+            ["77C TONAL GOLD"],
+            ["PMS 132 OLD GOLD"],
+            ["PMS 1255C OLD GOLD"],
+            ["79S YELLOW STRIKE", "79S TM Yellow Strike"],
+            ["PMS 109C NEW YELLOW"],
+            ["81F DESERT ORANGE", "81F TM DESERT ORANGE"],
+            ["89L TEAM ORANGE", "82U TM ORANGE"],
+            ["89M Uni Orange"],
+            ["89N Brilliant Orange"],
+            ["65N UNIVERSITY RED", "65N UNI RED", "54V TM Scarlet"],
+            ["66P DEEP MAROON", "67Y TM Dark Maroon"],
             ["69W TM CRIMSON", "69W TEAM CRIMSON"],
-            ["69Y TM CARDINAL", "69X TEAM MAROON"],
-            ["79Y TM BRIGHT GOLD", "79Q SUNDOWN"],
-            ["79S TM YELLOW STRIKE", "79S YELLOW STRIKE"],
-            ["79X TM VEGAS GOLD", "79W TEAM GOLD"],
-            ["81F DESERT ORANGE", "81F DESERT ORANGE"],
-            ["87F TM BRIGHT CERAMIC", "87F BRIGHT CERAMIC"],
-            ["82U TM ORANGE", "89L TEAM ORANGE"],
-            ["06H FLINT GREY", "06H FLINT GREY"],
-            ["15A NATURAL", "15A NATURAL"],
-            ["3EY PRO GREEN", "3EY PRO GREEN"],
-            ["3HN ACTION GREEN", "3HN ACTION GREEN"],
-            ["3GU HYPER TURQUOISE", "3GU HYPER TURQUOISE"],
-            ["44U SIGNAL BLUE", "44U SIGNAL BLUE"],
-            ["4KB DARK TURQUOISE", "4KB DARK TURQUOISE"],
-            ["4LB GYM BLUE", "4LB GYM BLUE"],
-            ["48Y ITALY BLUE", "48Y ITALY BLUE"],
-            ["52M NEW ORCHID", "52M NEW ORCHID"],
-            ["71R VOLT", "71R VOLT"],
-            ["77C GOLD", "77C GOLD"],
-            ["76I UNIVERSITY GOLD", "76I UNIVERSITY GOLD"],
-            ["78H AMARILLO", "78H AMARILLO"],
-            ["79V CLUB GOLD", "79V CLUB GOLD"],
-            ["89M UNIVERSITY ORANGE", "89M UNIVERSITY ORANGE"],
-            ["89N BRILLIANT ORANGE", "89N BRILLIANT ORANGE"],
-            ["89Q ORANGE HORIZON", "89Q ORANGE HORIZON"]
-        ]);
+            ["69X TEAM MAROON", "69Y TM CARDINAL"],
+            ["6DL GYM RED"],
+            ["39Y GORGE GREEN", "31V TM Dark Green"],
+            ["31W CLASSIC GREEN", "3EM TM Kelly Green"],
+            ["2DH MEDIUM OLIVE", "2DH TM Medium Olive"],
+            ["3EY PRO GREEN"],
+            ["PMS 361C LEVEL GREEN"],
+            ["4EV GAME ROYAL", "49V TM ROYAL"],
+            ["4EY VALOR BLUE", "4CV TM LIGHT BLUE"],
+            ["4ES AERO BLUE", "4ES  TM AERO BLUE"],
+            ["44A TIDAL BLUE"],
+            ["41S COLLEGE NAVY", "43V TM NAVY"],
+            ["4EW RUSH BLUE"],
+            ["48Y ITALY BLUE"],
+            ["44U SIGNAL BLUE"],
+            ["56N FIELD PURPLE", "52V TM Purple"],
+            ["52M NEW ORCHID"],
+            ["55U URBAN LILAC"],
+            ["66Z PINK FIRE II", "66Z PINK FIRE", "6DR TM Pink Fire"],
+            ["2AQ TM Brown", "20Q   DARK CINDER"],
+            ["2DI SEAL BROWN"],
+            ["33B OCHRE"],
+            ["TAN PMS 720C"],
+            ["71R VOLT"],
+            ["3GU HYPER TURQ"],
+            ["4KB DARK TURQUOISE"],
+            ["87F BRIGHT CERAMIC", "87F TM BRIGHT CERAMIC"],
+            // NUEVAS FILAS AGREGADAS
+            ["03T TM BLUE GREY", "03T Blue Grey", "01V WOLF GREY"],
+            ["03T TM PEWTER GREY", "03T PEWTER GREY", "08Q PEWTER GREY", "08Q TM PEWTER GREY"],
+            ["01P TM DARK STEEL GREY", "01P DK STEEL GREY", "01P DARK STEEL GREY"]
+        ];
+        
+        // Inicializar CreatorView
+        this.creatorView = null;
         
         // Construir grupos de equivalencia (expansión transitiva)
         this.equivalenceGroups = this.buildEquivalenceGroups();
@@ -78,30 +99,37 @@ class AlphaColorMatch {
         const nameToGroup = new Map();
         const groups = [];
         
-        for (let [name1, name2] of this.equivalencyTable) {
-            const norm1 = this.normalizeBaseName(name1);
-            const norm2 = this.normalizeBaseName(name2);
+        for (const row of this.equivalencyRows) {
+            const names = row.filter(name => name && name.trim() !== '');
+            if (names.length === 0) continue;
             
-            let group = null;
+            const normalizedNames = names.map(name => this.normalizeBaseName(name));
             
-            if (nameToGroup.has(norm1)) {
-                group = nameToGroup.get(norm1);
-            } else if (nameToGroup.has(norm2)) {
-                group = nameToGroup.get(norm2);
-            } else {
-                group = new Set();
-                groups.push(group);
+            let existingGroup = null;
+            for (const normName of normalizedNames) {
+                if (nameToGroup.has(normName)) {
+                    existingGroup = nameToGroup.get(normName);
+                    break;
+                }
             }
             
-            group.add(norm1);
-            group.add(norm2);
-            nameToGroup.set(norm1, group);
-            nameToGroup.set(norm2, group);
+            let targetGroup = existingGroup;
+            
+            if (!targetGroup) {
+                targetGroup = new Set();
+                groups.push(targetGroup);
+            }
+            
+            for (const normName of normalizedNames) {
+                targetGroup.add(normName);
+                nameToGroup.set(normName, targetGroup);
+            }
         }
         
-        for (let [name1, name2] of this.equivalencyTable) {
-            if (name1 === name2) {
-                const norm = this.normalizeBaseName(name1);
+        for (const row of this.equivalencyRows) {
+            for (const name of row) {
+                if (!name || name.trim() === '') continue;
+                const norm = this.normalizeBaseName(name);
                 if (!nameToGroup.has(norm)) {
                     const group = new Set();
                     group.add(norm);
@@ -145,7 +173,67 @@ class AlphaColorMatch {
     
     init() {
         this.bindEvents();
+        this.initCreatorView();
+        this.initViews();
         console.log('✅ Alpha Color Match - Versión Corregida');
+    }
+    
+    initCreatorView() {
+        const equivalencyMap = new Map();
+        for (const row of this.equivalencyRows) {
+            for (let i = 0; i < row.length; i++) {
+                for (let j = i + 1; j < row.length; j++) {
+                    equivalencyMap.set(row[i], row[j]);
+                    equivalencyMap.set(row[j], row[i]);
+                }
+            }
+        }
+        this.creatorView = new CreatorView(this, equivalencyMap);
+    }
+    
+    initViews() {
+        const menuItems = document.querySelectorAll('.menu-item');
+        const views = {
+            comparator: document.getElementById('comparatorView'),
+            history: document.getElementById('historyView'),
+            creator: document.getElementById('creatorView'),
+            eps: document.getElementById('epsView')
+        };
+        
+        const switchView = (viewName) => {
+            Object.values(views).forEach(view => {
+                if (view) view.classList.remove('active');
+            });
+            
+            if (views[viewName]) {
+                views[viewName].classList.add('active');
+            }
+            
+            menuItems.forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.view === viewName) {
+                    item.classList.add('active');
+                }
+            });
+            
+            if (viewName === 'history') {
+                if (this.loadHistory) this.loadHistory();
+            }
+            if (viewName === 'creator') {
+                if (this.creatorView) this.creatorView.renderTable();
+            }
+        };
+        
+        menuItems.forEach(item => {
+            item.addEventListener('click', () => {
+                const viewName = item.dataset.view;
+                if (viewName) {
+                    switchView(viewName);
+                }
+            });
+        });
+        
+        switchView('comparator');
     }
     
     bindEvents() {
@@ -261,7 +349,10 @@ class AlphaColorMatch {
     
     normalizeBaseName(baseName) {
         if (!baseName) return '';
-        return baseName.toUpperCase().replace(/\s+/g, ' ').trim();
+        let cleaned = baseName.toUpperCase();
+        cleaned = cleaned.replace(/\bTM\b/g, '');
+        cleaned = cleaned.replace(/\s+/g, ' ').trim();
+        return cleaned;
     }
     
     extractNK(fullName) {
@@ -374,7 +465,7 @@ class AlphaColorMatch {
             if (dataStarted && line.trim() === 'END_DATA') break;
             if (!dataStarted) continue;
             
-            const match = line.match(/^(\d+)\s+(?:"([^"]+)"|([^\s]+))\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)/);
+            const match = line.match(/^(\d+)\.?\s+(?:"([^"]+)"|([^\s]+))\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)/);
             
             if (match) {
                 let name = match[2] || match[3];
@@ -617,124 +708,124 @@ class AlphaColorMatch {
     }
     
     renderResults(results) {
-    const panel = document.getElementById('resultsPanel');
-    const tbody = document.getElementById('resultsTableBody');
-    const statsContainer = document.getElementById('statsBadges');
-    
-    if (!panel || !tbody) return;
-    
-    panel.style.display = 'block';
-    
-    const exactMatches = results.filter(r => r.matchType === 'exact').length;
-    const equivalentMatches = results.filter(r => r.matchType === 'equivalent').length;
-    const pendingPrimary = results.filter(r => r.matchType === 'pending_primary').length;
-    const pendingSecondary = results.filter(r => r.matchType === 'pending_secondary').length;
-    const selectedCount = this.selectedPending.size;
-    const deletedCount = this.deletedPending.size;
-    
-    statsContainer.innerHTML = `
-        <span class="badge match">✅ Exactas: ${exactMatches}</span>
-        <span class="badge" style="background:#b45309;">🔄 Equivalentes: ${equivalentMatches}</span>
-        <span class="badge missing">❌ Pendientes Principal: ${pendingPrimary}</span>
-        <span class="badge secondary">➕ Pendientes Secundario: ${pendingSecondary}</span>
-        <span class="badge" style="background:#15803d;">✓ Agregados: ${selectedCount}</span>
-        <span class="badge" style="background:#991b1b;">🗑️ Eliminados: ${deletedCount}</span>
-        <span class="badge" style="background:#eab308;">✨ Auto-agregados: ${this.autoAddedItems.length}</span>
-    `;
-    
-    tbody.innerHTML = results.map(item => {
-        let rowClass = '';
-        let statusClass = '';
-        let statusText = '';
-        let actionButton = '';
-        let selectionButtons = '';
-        let cmykPreview = '';
+        const panel = document.getElementById('resultsPanel');
+        const tbody = document.getElementById('resultsTableBody');
+        const statsContainer = document.getElementById('statsBadges');
         
-        if (item.matchType === 'exact' || item.matchType === 'equivalent') {
-            rowClass = item.matchType === 'exact' ? 'style="background: rgba(21, 128, 61, 0.1);"' : 'style="background: rgba(180, 83, 9, 0.1);"';
-            statusClass = item.matchType === 'exact' ? 'match-badge yes' : 'match-badge' + ' style="background:#b45309;"';
-            statusText = item.matchType === 'exact' ? '✅ COINCIDENCIA' : '🔄 EQUIVALENTE';
-            
-            const currentSelection = this.getGroupSelection(item.groupId);
-            const isManual = this.manualGroupSelections.has(item.groupId);
-            
-            const effectiveCmyk = this.getEffectiveCmyk(item.groupId, item.primaryData?.colorData, item.secondaryData?.colorData);
-            if (effectiveCmyk) {
-                cmykPreview = `<div style="font-size:0.65rem; color:#9ca3af; margin-top:0.25rem;">Valor usado: C:${effectiveCmyk[0].toFixed(1)} M:${effectiveCmyk[1].toFixed(1)} Y:${effectiveCmyk[2].toFixed(1)} K:${effectiveCmyk[3].toFixed(1)}</div>`;
-            }
-            
-            selectionButtons = `
-                <div class="selection-buttons">
-                    <button class="selection-btn ${currentSelection === 'primary' ? 'active-primary' : ''}" 
-                            onclick="window.app.setGroupSelection('${item.groupId}', 'primary')">
-                        📁 Principal<br>
-                        <span class="cmyk-small">C:${item.primaryData?.colorData.cmyk[0].toFixed(1)} M:${item.primaryData?.colorData.cmyk[1].toFixed(1)} Y:${item.primaryData?.colorData.cmyk[2].toFixed(1)} K:${item.primaryData?.colorData.cmyk[3].toFixed(1)}</span>
-                    </button>
-                    <button class="selection-btn ${currentSelection === 'secondary' ? 'active-secondary' : ''}" 
-                            onclick="window.app.setGroupSelection('${item.groupId}', 'secondary')">
-                        🔄 Secundario<br>
-                        <span class="cmyk-small">C:${item.secondaryData?.colorData.cmyk[0].toFixed(1)} M:${item.secondaryData?.colorData.cmyk[1].toFixed(1)} Y:${item.secondaryData?.colorData.cmyk[2].toFixed(1)} K:${item.secondaryData?.colorData.cmyk[3].toFixed(1)}</span>
-                    </button>
-                    ${isManual ? '<span class="manual-badge" style="font-size:0.6rem; color:#fbbf24;">🔒 Manual</span>' : ''}
-                </div>
-            `;
-            
-        } else {
-            const isAdded = this.selectedPending.has(item.id);
-            const isDeleted = this.deletedPending.has(item.id);
-            const isDecided = isAdded || isDeleted;
-            
-            if (!isDecided) {
-                rowClass = 'style="background: rgba(153, 27, 27, 0.1);"';
-                statusClass = 'match-badge no';
-                statusText = '❌ PENDIENTE';
-            } else if (isAdded) {
-                rowClass = 'style="background: rgba(21, 128, 61, 0.2);"';
-                statusClass = 'match-badge yes';
-                statusText = '✓ AGREGADO';
-            } else {
-                rowClass = 'style="background: rgba(153, 27, 27, 0.2);"';
-                statusClass = 'match-badge no';
-                statusText = '🗑️ ELIMINADO';
-            }
-            
-            actionButton = `
-                <div class="pending-buttons">
-                    <button class="small-btn btn-success" 
-                            onclick="window.app.togglePendingAdd('${item.id}')"
-                            ${isAdded ? 'disabled style="opacity:0.5;"' : ''}>
-                        ➕ Agregar
-                    </button>
-                    <button class="small-btn btn-danger" 
-                            onclick="window.app.togglePendingDelete('${item.id}')"
-                            ${isDeleted ? 'disabled style="opacity:0.5;"' : ''}>
-                        🗑️ Eliminar
-                    </button>
-                </div>
-            `;
-            
-            const colorData = item.primaryData?.colorData || item.secondaryData?.colorData;
-            if (colorData) {
-                cmykPreview = `<div style="font-size:0.65rem; color:#9ca3af; margin-top:0.25rem;">CMYK: ${colorData.cmyk.map(v => v.toFixed(1)).join(', ')}</div>`;
-            }
-        }
+        if (!panel || !tbody) return;
         
-        const primaryName = item.primaryData ? item.primaryData.baseName : '—';
-        const secondaryName = item.secondaryData ? item.secondaryData.baseName : '—';
-        const primaryCmyk = item.primaryData?.colorData?.cmyk;
-        const secondaryCmyk = item.secondaryData?.colorData?.cmyk;
+        panel.style.display = 'block';
         
-        return `
-            <tr ${rowClass}>
-                <td><strong>${item.nk}</strong>${cmykPreview}</td>
-                <td>${primaryName}<br>${primaryCmyk ? `<span class="cmyk-small">C:${primaryCmyk[0].toFixed(1)} M:${primaryCmyk[1].toFixed(1)} Y:${primaryCmyk[2].toFixed(1)} K:${primaryCmyk[3].toFixed(1)}</span>` : ''}</td>
-                <td>${secondaryName}<br>${secondaryCmyk ? `<span class="cmyk-small">C:${secondaryCmyk[0].toFixed(1)} M:${secondaryCmyk[1].toFixed(1)} Y:${secondaryCmyk[2].toFixed(1)} K:${secondaryCmyk[3].toFixed(1)}</span>` : ''}</td>
-                <td><span class="${statusClass}">${statusText}</span></td>
-                <td>${selectionButtons || actionButton || '—'}</td>
-            </tr>
+        const exactMatches = results.filter(r => r.matchType === 'exact').length;
+        const equivalentMatches = results.filter(r => r.matchType === 'equivalent').length;
+        const pendingPrimary = results.filter(r => r.matchType === 'pending_primary').length;
+        const pendingSecondary = results.filter(r => r.matchType === 'pending_secondary').length;
+        const selectedCount = this.selectedPending.size;
+        const deletedCount = this.deletedPending.size;
+        
+        statsContainer.innerHTML = `
+            <span class="badge match">✅ Exactas: ${exactMatches}</span>
+            <span class="badge" style="background:#b45309;">🔄 Equivalentes: ${equivalentMatches}</span>
+            <span class="badge missing">❌ Pendientes Principal: ${pendingPrimary}</span>
+            <span class="badge secondary">➕ Pendientes Secundario: ${pendingSecondary}</span>
+            <span class="badge" style="background:#15803d;">✓ Agregados: ${selectedCount}</span>
+            <span class="badge" style="background:#991b1b;">🗑️ Eliminados: ${deletedCount}</span>
+            <span class="badge" style="background:#eab308;">✨ Auto-agregados: ${this.autoAddedItems.length}</span>
         `;
-    }).join('');
-}
+        
+        tbody.innerHTML = results.map(item => {
+            let rowClass = '';
+            let statusClass = '';
+            let statusText = '';
+            let actionButton = '';
+            let selectionButtons = '';
+            let cmykPreview = '';
+            
+            if (item.matchType === 'exact' || item.matchType === 'equivalent') {
+                rowClass = item.matchType === 'exact' ? 'style="background: rgba(21, 128, 61, 0.1);"' : 'style="background: rgba(180, 83, 9, 0.1);"';
+                statusClass = item.matchType === 'exact' ? 'match-badge yes' : 'match-badge' + ' style="background:#b45309;"';
+                statusText = item.matchType === 'exact' ? '✅ COINCIDENCIA' : '🔄 EQUIVALENTE';
+                
+                const currentSelection = this.getGroupSelection(item.groupId);
+                const isManual = this.manualGroupSelections.has(item.groupId);
+                
+                const effectiveCmyk = this.getEffectiveCmyk(item.groupId, item.primaryData?.colorData, item.secondaryData?.colorData);
+                if (effectiveCmyk) {
+                    cmykPreview = `<div style="font-size:0.65rem; color:#9ca3af; margin-top:0.25rem;">Valor usado: C:${effectiveCmyk[0].toFixed(1)} M:${effectiveCmyk[1].toFixed(1)} Y:${effectiveCmyk[2].toFixed(1)} K:${effectiveCmyk[3].toFixed(1)}</div>`;
+                }
+                
+                selectionButtons = `
+                    <div class="selection-buttons">
+                        <button class="selection-btn ${currentSelection === 'primary' ? 'active-primary' : ''}" 
+                                onclick="window.app.setGroupSelection('${item.groupId}', 'primary')">
+                            📁 Principal<br>
+                            <span class="cmyk-small">C:${item.primaryData?.colorData.cmyk[0].toFixed(1)} M:${item.primaryData?.colorData.cmyk[1].toFixed(1)} Y:${item.primaryData?.colorData.cmyk[2].toFixed(1)} K:${item.primaryData?.colorData.cmyk[3].toFixed(1)}</span>
+                        </button>
+                        <button class="selection-btn ${currentSelection === 'secondary' ? 'active-secondary' : ''}" 
+                                onclick="window.app.setGroupSelection('${item.groupId}', 'secondary')">
+                            🔄 Secundario<br>
+                            <span class="cmyk-small">C:${item.secondaryData?.colorData.cmyk[0].toFixed(1)} M:${item.secondaryData?.colorData.cmyk[1].toFixed(1)} Y:${item.secondaryData?.colorData.cmyk[2].toFixed(1)} K:${item.secondaryData?.colorData.cmyk[3].toFixed(1)}</span>
+                        </button>
+                        ${isManual ? '<span class="manual-badge" style="font-size:0.6rem; color:#fbbf24;">🔒 Manual</span>' : ''}
+                    </div>
+                `;
+                
+            } else {
+                const isAdded = this.selectedPending.has(item.id);
+                const isDeleted = this.deletedPending.has(item.id);
+                const isDecided = isAdded || isDeleted;
+                
+                if (!isDecided) {
+                    rowClass = 'style="background: rgba(153, 27, 27, 0.1);"';
+                    statusClass = 'match-badge no';
+                    statusText = '❌ PENDIENTE';
+                } else if (isAdded) {
+                    rowClass = 'style="background: rgba(21, 128, 61, 0.2);"';
+                    statusClass = 'match-badge yes';
+                    statusText = '✓ AGREGADO';
+                } else {
+                    rowClass = 'style="background: rgba(153, 27, 27, 0.2);"';
+                    statusClass = 'match-badge no';
+                    statusText = '🗑️ ELIMINADO';
+                }
+                
+                actionButton = `
+                    <div class="pending-buttons">
+                        <button class="small-btn btn-success" 
+                                onclick="window.app.togglePendingAdd('${item.id}')"
+                                ${isAdded ? 'disabled style="opacity:0.5;"' : ''}>
+                            ➕ Agregar
+                        </button>
+                        <button class="small-btn btn-danger" 
+                                onclick="window.app.togglePendingDelete('${item.id}')"
+                                ${isDeleted ? 'disabled style="opacity:0.5;"' : ''}>
+                            🗑️ Eliminar
+                        </button>
+                    </div>
+                `;
+                
+                const colorData = item.primaryData?.colorData || item.secondaryData?.colorData;
+                if (colorData) {
+                    cmykPreview = `<div style="font-size:0.65rem; color:#9ca3af; margin-top:0.25rem;">CMYK: ${colorData.cmyk.map(v => v.toFixed(1)).join(', ')}</div>`;
+                }
+            }
+            
+            const primaryName = item.primaryData ? item.primaryData.baseName : '—';
+            const secondaryName = item.secondaryData ? item.secondaryData.baseName : '—';
+            const primaryCmyk = item.primaryData?.colorData?.cmyk;
+            const secondaryCmyk = item.secondaryData?.colorData?.cmyk;
+            
+            return `
+                <tr ${rowClass}>
+                    68<strong>${item.nk}</strong>${cmykPreview}68
+                    68${primaryName}<br>${primaryCmyk ? `<span class="cmyk-small">C:${primaryCmyk[0].toFixed(1)} M:${primaryCmyk[1].toFixed(1)} Y:${primaryCmyk[2].toFixed(1)} K:${primaryCmyk[3].toFixed(1)}</span>` : ''}68
+                    68${secondaryName}<br>${secondaryCmyk ? `<span class="cmyk-small">C:${secondaryCmyk[0].toFixed(1)} M:${secondaryCmyk[1].toFixed(1)} Y:${secondaryCmyk[2].toFixed(1)} K:${secondaryCmyk[3].toFixed(1)}</span>` : ''}68
+                    68<span class="${statusClass}">${statusText}</span>68
+                    68${selectionButtons || actionButton || '—'}68
+                68
+            `;
+        }).join('');
+    }
     
     buildExportItems() {
         const exportItems = [];

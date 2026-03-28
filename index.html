@@ -8,6 +8,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="css/main.css">
     <link rel="stylesheet" href="css/components/sidebar.css">
+    <link rel="stylesheet" href="css/views/creator.css">
 </head>
 <body>
     <div class="app-wrapper">
@@ -42,10 +43,8 @@
                     <p>Comparador profesional de colores CMYK - Selección individual de valores por grupo</p>
                 </div>
                 
-                <!-- Vista Comparador (SISTEMA EXISTENTE) -->
+                <!-- Vista Comparador -->
                 <div id="comparatorView" class="view-content active">
-                    <!-- TODO EL CÓDIGO EXISTENTE DEL SISTEMA VA AQUÍ -->
-                    <!-- Copia todo el contenido que estaba dentro del container original -->
                     <div class="upload-section">
                         <div class="upload-card">
                             <h3>📁 Archivo Principal</h3>
@@ -73,7 +72,7 @@
                     
                     <div style="text-align: center; display: flex; gap: 1rem; justify-content: center; margin-bottom: 1rem; flex-wrap: wrap;">
                         <button id="compareBtn" class="compare-btn">🔍 COMPARAR</button>
-                        <button id="replaceAllSecondaryBtn" class="compare-btn" style="background: #b45309;">🔄 ACTUALIZAR A VALORES NUEVOS</button>
+                        <button id="replaceAllSecondaryBtn" class="compare-btn" style="background: #b45309;">🔄 Reemplazar NO modificados por SECUNDARIO</button>
                         <button id="exportBtn" class="compare-btn" style="background: #15803d;" disabled>📥 EXPORTAR ARCHIVO</button>
                     </div>
                     
@@ -110,7 +109,7 @@
                                 66<th>NK</th><th>Archivo Principal (CMYK)</th><th>Archivo Secundario (CMYK)</th><th>Estado</th><th>Acción / Selección de valores</th>
                             </thead>
                             <tbody id="resultsTableBody"></tbody>
-                         </table>
+                          </table>
                     </div>
                 </div>
 
@@ -128,29 +127,53 @@
                     </div>
                 </div>
 
-                <!-- Vista Crear Nuevo TXT (placeholder) -->
+                <!-- Vista Crear Nuevo TXT -->
                 <div id="creatorView" class="view-content">
                     <div class="creator-header">
                         <h3>✨ Crear Nuevo Archivo TXT</h3>
-                        <button id="downloadTxtBtn" class="btn-primary" disabled>💾 Descargar archivo</button>
+                        <div class="creator-header-buttons">
+                            <button id="loadTxtBtn" class="btn-secondary">📁 Cargar TXT</button>
+                            <button id="downloadTxtBtn" class="btn-primary" disabled>💾 Exportar</button>
+                        </div>
                     </div>
+                    
+                    <div class="database-selector">
+                        <label for="databaseSelect">📂 Base de datos:</label>
+                        <select id="databaseSelect" class="database-select">
+                            <option value="">-- Seleccionar base de datos --</option>
+                            <option value="db1">Base de datos 1 (ejemplo)</option>
+                            <option value="db2">Base de datos 2 (ejemplo)</option>
+                        </select>
+                    </div>
+                    
                     <div class="creator-controls">
                         <button id="addColorRowBtn" class="btn-success">➕ Agregar color</button>
-                        <button id="resetCreatorBtn" class="btn-outline">🔄 Reiniciar</button>
                     </div>
+                    
                     <div class="table-wrapper creator-table">
                         <table class="data-table" id="creatorTable">
                             <thead>
-                                66<th>#</th><th>Nombre del Color</th><th>NK</th><th>Cian</th><th>Magenta</th><th>Yellow</th><th>Black</th><th>L*</th><th>a*</th><th>b*</th><th></th>
+                                60<th style="width: 40px">#</th>
+                                <th>Nombre del Color</th>
+                                <th style="width: 80px">NK</th>
+                                <th style="width: 100px">Cian</th>
+                                <th style="width: 100px">Magenta</th>
+                                <th style="width: 100px">Yellow</th>
+                                <th style="width: 100px">Black</th>
+                                <th style="width: 100px">L*</th>
+                                <th style="width: 100px">a*</th>
+                                <th style="width: 100px">b*</th>
+                                <th style="width: 100px">Estado</th>
+                                <th style="width: 80px">Acción</th>
                             </thead>
                             <tbody id="creatorTableBody">
-                                <tr><td colspan="11" class="empty-state">Agregue colores para comenzar</td></tr>
+                                60<td colspan="12" class="empty-state">Agregue colores para comenzar</td>
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                <!-- Vista EPS (placeholder) -->
+                <!-- Vista EPS -->
                 <div id="epsView" class="view-content">
                     <div class="help-content">
                         <h3>📄 Exportar a EPS</h3>
@@ -173,9 +196,6 @@
         </div>
     </div>
 
-   <!-- scripts -->
-<script src="js/main.js"></script>
-<script src="js/modules/views/creatorView.js"></script>
-<script src="js/modules/views/menuController.js"></script>
+    <script type="module" src="js/main.js"></script>
 </body>
 </html>

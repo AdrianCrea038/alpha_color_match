@@ -1,61 +1,23 @@
 // ============================================================
 // CREATOR VIEW - Crear Nuevo Archivo TXT
-// Tabla editable con campos para colores
+// - Nombre del color NO editable (solo se asigna al cargar/agregar)
+// - Botón Agregar con modal y motivo obligatorio
 // ============================================================
 
-class CreatorView {
-    constructor() {
+export class CreatorView {
+    constructor(app, equivalencyTable) {
+        this.app = app;
+        this.equivalencyTable = equivalencyTable;
         this.colors = [];
         this.nextId = 1;
+        this.historyLog = [];
+        this.currentUser = 'usuario';
         
-        // Tabla de equivalencia para complementarios
-        this.equivalencyTable = new Map([
-            ["10F TM WHITE", "10A WHITE"],
-            ["03S TM BLACK", "00A BLACK"],
-            ["01P TM DK STEEL GREY", "01P DK STEEL GREY"],
-            ["03T BLUE GREY", "01V WOLF GREY"],
-            ["05X TM ANTHRACITE", "06F ANTHRACITE"],
-            ["2AQ TM BROWN", "20Q DARK CINDER"],
-            ["2DH TM MEDIUM OLIVE", "2DH MEDIUM OLIVE"],
-            ["3EM TM KELLY GREEN", "31W CLASSIC GREEN"],
-            ["31V TM DARK GREEN", "39Y GORGE GREEN"],
-            ["43V TM NAVY", "41S COLLEGE NAVY"],
-            ["44A TM TIDAL BLUE", "44A TIDAL BLUE"],
-            ["45W TM BLUSTERY", "45W BLUSTERY"],
-            ["4ES TM AERO BLUE", "4ES AERO BLUE"],
-            ["49V TM ROYAL", "4EV GAME ROYAL"],
-            ["4CV TM LIGHT BLUE", "4EY VALOR BLUE"],
-            ["52V TM PURPLE", "56N FIELD PURPLE"],
-            ["64V TM SCARLET", "65N UNIVERSITY RED"],
-            ["67Y TM DARK MAROON", "66P DEEP MAROON"],
-            ["6DR TM PINK FIRE II", "66Z PINK FIRE II"],
-            ["69W TM CRIMSON", "69W TEAM CRIMSON"],
-            ["69Y TM CARDINAL", "69X TEAM MAROON"],
-            ["79Y TM BRIGHT GOLD", "79Q SUNDOWN"],
-            ["79S TM YELLOW STRIKE", "79S YELLOW STRIKE"],
-            ["79X TM VEGAS GOLD", "79W TEAM GOLD"],
-            ["81F DESERT ORANGE", "81F DESERT ORANGE"],
-            ["87F TM BRIGHT CERAMIC", "87F BRIGHT CERAMIC"],
-            ["82U TM ORANGE", "89L TEAM ORANGE"],
-            ["06H FLINT GREY", "06H FLINT GREY"],
-            ["15A NATURAL", "15A NATURAL"],
-            ["3EY PRO GREEN", "3EY PRO GREEN"],
-            ["3HN ACTION GREEN", "3HN ACTION GREEN"],
-            ["3GU HYPER TURQUOISE", "3GU HYPER TURQUOISE"],
-            ["44U SIGNAL BLUE", "44U SIGNAL BLUE"],
-            ["4KB DARK TURQUOISE", "4KB DARK TURQUOISE"],
-            ["4LB GYM BLUE", "4LB GYM BLUE"],
-            ["48Y ITALY BLUE", "48Y ITALY BLUE"],
-            ["52M NEW ORCHID", "52M NEW ORCHID"],
-            ["71R VOLT", "71R VOLT"],
-            ["77C GOLD", "77C GOLD"],
-            ["76I UNIVERSITY GOLD", "76I UNIVERSITY GOLD"],
-            ["78H AMARILLO", "78H AMARILLO"],
-            ["79V CLUB GOLD", "79V CLUB GOLD"],
-            ["89M UNIVERSITY ORANGE", "89M UNIVERSITY ORANGE"],
-            ["89N BRILLIANT ORANGE", "89N BRILLIANT ORANGE"],
-            ["89Q ORANGE HORIZON", "89Q ORANGE HORIZON"]
-        ]);
+        this.tableBody = null;
+        this.downloadBtn = null;
+        this.addBtn = null;
+        this.loadFileBtn = null;
+        this.databaseSelect = null;
         
         this.init();
     }
@@ -64,31 +26,103 @@ class CreatorView {
         this.tableBody = document.getElementById('creatorTableBody');
         this.downloadBtn = document.getElementById('downloadTxtBtn');
         this.addBtn = document.getElementById('addColorRowBtn');
-        this.resetBtn = document.getElementById('resetCreatorBtn');
+        this.loadFileBtn = document.getElementById('loadTxtBtn');
+        this.databaseSelect = document.getElementById('databaseSelect');
         
-        if (this.tableBody) {
-            this.resetTable();
-            this.attachEvents();
-        }
-    }
-    
-    attachEvents() {
+        if (!this.tableBody) return;
+        
         if (this.addBtn) {
-            this.addBtn.onclick = () => this.addColor();
-        }
-        
-        if (this.resetBtn) {
-            this.resetBtn.onclick = () => this.resetTable();
+            this.addBtn.onclick = () => this.showAddColorModal();
         }
         
         if (this.downloadBtn) {
             this.downloadBtn.onclick = () => this.download();
         }
+        
+        if (this.loadFileBtn) {
+            this.loadFileBtn.onclick = () => this.loadTxtFile();
+        }
+        
+        this.resetTable();
     }
     
-    normalizeName(name) {
-        if (!name) return '';
-        return name.toUpperCase().replace(/\s+/g, ' ').trim();
+    // Mostrar modal para agregar color con motivo obligatorio
+    showAddColorModal() {
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 450px;">
+                <div class="modal-header" style="background: #15803d;">
+                    <h3 style="color: white;">➕ Agregar nuevo color</h3>
+                    <button class="modal-close" style="color: white;">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="newColorName">Nombre del color:</label>
+                        <input type="text" id="newColorName" class="color-name-input" placeholder="Ej: 10F TM WHITE" style="width:100%; padding:0.5rem; margin-top:0.25rem; background:#1e1e2c; border:1px solid #4b5563; border-radius:0.4rem; color:white;">
+                    </div>
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <label for="addColorReason">Motivo de la adición:</label>
+                        <textarea id="addColorReason" class="undo-reason-input" rows="3" placeholder="Ej: Nuevo color necesario para el proyecto..."></textarea>
+                    </div>
+                    <p style="color: #fbbf24; font-size: 0.75rem; margin-top: 0.5rem;">
+                        ⚠️ El motivo es obligatorio para agregar el color.
+                    </p>
+                </div>
+                <div class="modal-buttons">
+                    <button class="btn btn-secondary cancel-add">Cancelar</button>
+                    <button class="btn btn-primary confirm-add">Agregar</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        setTimeout(() => modal.classList.add('active'), 10);
+        
+        const closeModal = () => {
+            modal.classList.remove('active');
+            setTimeout(() => modal.remove(), 300);
+        };
+        
+        modal.querySelector('.modal-close').onclick = closeModal;
+        modal.querySelector('.cancel-add').onclick = closeModal;
+        
+        const nameInput = modal.querySelector('#newColorName');
+        const reasonTextarea = modal.querySelector('#addColorReason');
+        const confirmBtn = modal.querySelector('.confirm-add');
+        
+        confirmBtn.onclick = () => {
+            const name = nameInput.value.trim();
+            const reason = reasonTextarea.value.trim();
+            
+            if (!name) {
+                alert('⚠️ Debe ingresar el nombre del color.');
+                return;
+            }
+            
+            if (!reason) {
+                alert('⚠️ El motivo es obligatorio para agregar el color.');
+                return;
+            }
+            
+            // Agregar el color
+            this.addColor({
+                name: name,
+                nk: 'NK001',
+                cmyk: { c: 0, m: 0, y: 0, k: 0 },
+                lab: { l: 100, a: 0, b: 0 },
+                isLocked: false
+            });
+            
+            // Registrar en historial
+            this.addToHistory(this.nextId - 1, 'ADD', reason);
+            
+            closeModal();
+        };
+        
+        modal.onclick = (e) => {
+            if (e.target === modal) closeModal();
+        };
     }
     
     getComplementaryName(name) {
@@ -108,27 +142,23 @@ class CreatorView {
         return null;
     }
     
-    addColor(parentColor = null, isComplementary = false, complementaryName = null) {
+    normalizeName(name) {
+        if (!name) return '';
+        return name.toUpperCase().replace(/\s+/g, ' ').trim();
+    }
+    
+    addColor(colorData = null) {
         const newId = this.nextId++;
         
         let newColor = {
             id: newId,
-            name: '',
-            nk: 'NK001',
-            cmyk: { c: 0, m: 0, y: 0, k: 0 },
-            lab: { l: 100, a: 0, b: 0 },
-            isComplementary: isComplementary,
-            parentId: parentColor ? parentColor.id : null
+            name: colorData ? colorData.name : '',
+            nk: colorData ? colorData.nk : 'NK001',
+            cmyk: colorData ? { ...colorData.cmyk } : { c: 0, m: 0, y: 0, k: 0 },
+            lab: colorData ? { ...colorData.lab } : { l: 100, a: 0, b: 0 },
+            isLocked: false,
+            modificationHistory: []
         };
-        
-        if (isComplementary && complementaryName) {
-            newColor.name = complementaryName;
-            if (parentColor) {
-                newColor.nk = parentColor.nk;
-                newColor.cmyk = { ...parentColor.cmyk };
-                newColor.lab = { ...parentColor.lab };
-            }
-        }
         
         this.colors.push(newColor);
         this.renderTable();
@@ -136,87 +166,111 @@ class CreatorView {
         return newColor;
     }
     
-    deleteColor(colorId) {
-        this.colors = this.colors.filter(c => c.id !== colorId);
-        this.colors = this.colors.filter(c => c.parentId !== colorId);
+    lockColor(colorId) {
+        const color = this.colors.find(c => c.id === colorId);
+        if (!color || color.isLocked) return;
+        
+        color.isLocked = true;
+        this.addToHistory(colorId, 'LOCK', 'Color marcado como bueno');
         this.renderTable();
+    }
+    
+    unlockColor(colorId, reason) {
+        if (!reason || reason.trim() === '') {
+            alert('⚠️ El motivo es obligatorio para desbloquear el color.');
+            return false;
+        }
+        
+        const color = this.colors.find(c => c.id === colorId);
+        if (!color) return false;
+        
+        color.isLocked = false;
+        this.addToHistory(colorId, 'UNLOCK', reason);
+        this.renderTable();
+        return true;
     }
     
     updateColor(colorId, updates) {
         const color = this.colors.find(c => c.id === colorId);
-        if (!color || color.isComplementary) return;
+        if (!color || color.isLocked) return;
         
-        Object.assign(color, updates);
+        const oldValues = {
+            name: color.name,
+            cmyk: { ...color.cmyk }
+        };
         
-        // Actualizar complementarios
-        this.colors.forEach(c => {
-            if (c.parentId === colorId) {
-                c.cmyk = { ...color.cmyk };
-                c.lab = { ...color.lab };
-                c.nk = color.nk;
-            }
-        });
+        if (updates.name !== undefined) color.name = updates.name;
+        if (updates.cmyk) {
+            if (updates.cmyk.c !== undefined) color.cmyk.c = updates.cmyk.c;
+            if (updates.cmyk.m !== undefined) color.cmyk.m = updates.cmyk.m;
+            if (updates.cmyk.y !== undefined) color.cmyk.y = updates.cmyk.y;
+            if (updates.cmyk.k !== undefined) color.cmyk.k = updates.cmyk.k;
+        }
+        
+        if (oldValues.name !== color.name || 
+            oldValues.cmyk.c !== color.cmyk.c ||
+            oldValues.cmyk.m !== color.cmyk.m ||
+            oldValues.cmyk.y !== color.cmyk.y ||
+            oldValues.cmyk.k !== color.cmyk.k) {
+            
+            this.addToHistory(colorId, 'EDIT', `Modificado: ${oldValues.name} → ${color.name}`);
+        }
         
         this.renderTable();
+    }
+    
+    addToHistory(colorId, action, reason) {
+        const entry = {
+            id: Date.now(),
+            colorId: colorId,
+            action: action,
+            reason: reason,
+            user: this.currentUser,
+            timestamp: new Date().toISOString()
+        };
+        
+        this.historyLog.push(entry);
+        
+        const color = this.colors.find(c => c.id === colorId);
+        if (color) {
+            if (!color.modificationHistory) color.modificationHistory = [];
+            color.modificationHistory.push(entry);
+        }
+        
+        if (this.historyLog.length > 100) this.historyLog.shift();
     }
     
     renderTable() {
         if (!this.tableBody) return;
         
         if (this.colors.length === 0) {
-            this.tableBody.innerHTML = '<tr><td colspan="11" class="empty-state">Agregue colores para comenzar</td></tr>';
+            this.tableBody.innerHTML = '发展<td colspan="12" class="empty-state">Agregue colores para comenzar</td><\/tr>';
             if (this.downloadBtn) this.downloadBtn.disabled = true;
             return;
         }
         
         this.tableBody.innerHTML = this.colors.map((color, index) => {
-            const isComplementary = color.isComplementary;
-            const rowClass = isComplementary ? 'complementary-row' : '';
-            const disabledAttr = isComplementary ? 'disabled' : '';
-            const lockIcon = isComplementary ? '<i class="fas fa-lock"></i>' : '';
+            const isLocked = color.isLocked;
+            const disabledAttr = isLocked ? 'disabled' : '';
+            const statusBadge = isLocked ? '<span class="status-badge locked">✅ Bueno (🔒)</span>' : '';
+            const actionButton = isLocked 
+                ? `<button class="small-btn btn-modify" data-id="${color.id}" title="Modificar"><i class="fas fa-edit"></i></button>`
+                : `<button class="small-btn btn-lock" data-id="${color.id}" title="Marcar como bueno"><i class="fas fa-check-circle"></i></button>`;
             
             return `
-                <tr class="${rowClass}" data-id="${color.id}">
-                    <td class="row-number">${index + 1}</td>
-                    <td>
-                        <input type="text" 
-                               class="color-name-input" 
-                               value="${this.escapeHtml(color.name)}"
-                               ${disabledAttr}
-                               data-field="name"
-                               data-id="${color.id}">
-                        ${isComplementary ? '<span class="complementary-badge">(complementario)</span>' : ''}
-                    </td>
-                    <td>
-                        <input type="text" 
-                               class="nk-input" 
-                               value="${this.escapeHtml(color.nk)}"
-                               ${disabledAttr}
-                               data-field="nk"
-                               data-id="${color.id}">
-                        ${isComplementary ? lockIcon : ''}
-                    </td>
-                    <td><input type="number" step="0.1" value="${color.cmyk.c}" ${disabledAttr} data-field="cmyk_c" data-id="${color.id}"></td>
-                    <td><input type="number" step="0.1" value="${color.cmyk.m}" ${disabledAttr} data-field="cmyk_m" data-id="${color.id}"></td>
-                    <td><input type="number" step="0.1" value="${color.cmyk.y}" ${disabledAttr} data-field="cmyk_y" data-id="${color.id}"></td>
-                    <td><input type="number" step="0.1" value="${color.cmyk.k}" ${disabledAttr} data-field="cmyk_k" data-id="${color.id}"></td>
-                    <td><input type="number" step="0.1" value="${color.lab.l}" ${disabledAttr} data-field="lab_l" data-id="${color.id}"></td>
-                    <td><input type="number" step="0.1" value="${color.lab.a}" ${disabledAttr} data-field="lab_a" data-id="${color.id}"></td>
-                    <td><input type="number" step="0.1" value="${color.lab.b}" ${disabledAttr} data-field="lab_b" data-id="${color.id}"></td>
-                    <td class="actions-cell">
-                        ${!isComplementary ? `
-                            <button class="small-btn delete-btn" data-id="${color.id}" title="Eliminar color">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                            <button class="small-btn preview-btn" data-id="${color.id}" title="Vista previa">
-                                <i class="fas fa-eye"></i>
-                            </button>
-                        ` : `
-                            <button class="small-btn btn-locked" disabled title="Complementario automático">
-                                <i class="fas fa-lock"></i>
-                            </button>
-                        `}
-                    </td>
+                <tr class="${isLocked ? 'locked-row' : ''}" data-id="${color.id}">
+                    <td class="row-number">${index + 1}${isLocked ? ' 🔒' : ''}</td>
+                    <td><input type="text" class="color-name-input" value="${this.escapeHtml(color.name)}" disabled></td>
+                    <td><input type="text" class="nk-input" value="${this.escapeHtml(color.nk)}" disabled></td>
+                    <td><input type="number" step="0.000001" min="0" max="100" value="${color.cmyk.c.toFixed(6)}" ${disabledAttr} data-field="cmyk_c" data-id="${color.id}"></td>
+                    <td><input type="number" step="0.000001" min="0" max="100" value="${color.cmyk.m.toFixed(6)}" ${disabledAttr} data-field="cmyk_m" data-id="${color.id}"></td>
+                    <td><input type="number" step="0.000001" min="0" max="100" value="${color.cmyk.y.toFixed(6)}" ${disabledAttr} data-field="cmyk_y" data-id="${color.id}"></td>
+                    <td><input type="number" step="0.000001" min="0" max="100" value="${color.cmyk.k.toFixed(6)}" ${disabledAttr} data-field="cmyk_k" data-id="${color.id}"></td>
+                    <td><input type="number" step="0.000001" value="${color.lab.l.toFixed(6)}" disabled></td>
+                    <td><input type="number" step="0.000001" value="${color.lab.a.toFixed(6)}" disabled></td>
+                    <td><input type="number" step="0.000001" value="${color.lab.b.toFixed(6)}" disabled></td>
+                    <td class="status-cell">${statusBadge}</td>
+                    <td class="actions-cell">${actionButton}</td>
                 </tr>
             `;
         }).join('');
@@ -229,7 +283,7 @@ class CreatorView {
     }
     
     attachInputEvents() {
-        const inputs = this.tableBody.querySelectorAll('input');
+        const inputs = this.tableBody.querySelectorAll('input:not([disabled])');
         inputs.forEach(input => {
             input.removeEventListener('change', this.handleInputChange);
             input.addEventListener('change', (e) => this.handleInputChange(e));
@@ -243,108 +297,80 @@ class CreatorView {
         let value = input.value;
         
         const color = this.colors.find(c => c.id === colorId);
-        if (!color || color.isComplementary) return;
+        if (!color || color.isLocked) return;
         
-        if (field === 'name') {
-            const complementaryName = this.getComplementaryName(value);
-            const existingComplementary = this.colors.find(c => c.parentId === colorId);
-            
-            if (complementaryName && !existingComplementary) {
-                this.addColor(color, true, complementaryName);
-            } else if (!complementaryName && existingComplementary) {
-                this.colors = this.colors.filter(c => c.id !== existingComplementary.id);
-            }
-            
-            color.name = value;
-        } else if (field === 'nk') {
-            color.nk = value;
-            this.colors.forEach(c => {
-                if (c.parentId === colorId) c.nk = value;
-            });
-        } else if (field === 'cmyk_c') {
-            color.cmyk.c = parseFloat(value) || 0;
-            this.updateComplementaryValues(colorId);
+        const updates = {};
+        
+        if (field === 'cmyk_c') {
+            let num = parseFloat(value);
+            if (isNaN(num)) num = 0;
+            num = Math.min(100, Math.max(0, num));
+            updates.cmyk = { ...color.cmyk, c: num };
         } else if (field === 'cmyk_m') {
-            color.cmyk.m = parseFloat(value) || 0;
-            this.updateComplementaryValues(colorId);
+            let num = parseFloat(value);
+            if (isNaN(num)) num = 0;
+            num = Math.min(100, Math.max(0, num));
+            updates.cmyk = { ...color.cmyk, m: num };
         } else if (field === 'cmyk_y') {
-            color.cmyk.y = parseFloat(value) || 0;
-            this.updateComplementaryValues(colorId);
+            let num = parseFloat(value);
+            if (isNaN(num)) num = 0;
+            num = Math.min(100, Math.max(0, num));
+            updates.cmyk = { ...color.cmyk, y: num };
         } else if (field === 'cmyk_k') {
-            color.cmyk.k = parseFloat(value) || 0;
-            this.updateComplementaryValues(colorId);
-        } else if (field === 'lab_l') {
-            color.lab.l = parseFloat(value) || 0;
-            this.updateComplementaryValues(colorId);
-        } else if (field === 'lab_a') {
-            color.lab.a = parseFloat(value) || 0;
-            this.updateComplementaryValues(colorId);
-        } else if (field === 'lab_b') {
-            color.lab.b = parseFloat(value) || 0;
-            this.updateComplementaryValues(colorId);
+            let num = parseFloat(value);
+            if (isNaN(num)) num = 0;
+            num = Math.min(100, Math.max(0, num));
+            updates.cmyk = { ...color.cmyk, k: num };
         }
         
-        this.renderTable();
-    }
-    
-    updateComplementaryValues(parentId) {
-        const parent = this.colors.find(c => c.id === parentId);
-        if (!parent) return;
-        
-        this.colors.forEach(c => {
-            if (c.parentId === parentId) {
-                c.cmyk = { ...parent.cmyk };
-                c.lab = { ...parent.lab };
-                c.nk = parent.nk;
-            }
-        });
+        if (Object.keys(updates).length > 0) {
+            this.updateColor(colorId, updates);
+        }
     }
     
     attachActionEvents() {
-        const deleteBtns = this.tableBody.querySelectorAll('.delete-btn');
-        deleteBtns.forEach(btn => {
+        const lockBtns = this.tableBody.querySelectorAll('.btn-lock');
+        lockBtns.forEach(btn => {
             btn.onclick = (e) => {
                 e.stopPropagation();
                 const colorId = parseInt(btn.dataset.id);
-                this.deleteColor(colorId);
+                this.lockColor(colorId);
             };
         });
         
-        const previewBtns = this.tableBody.querySelectorAll('.preview-btn');
-        previewBtns.forEach(btn => {
+        const modifyBtns = this.tableBody.querySelectorAll('.btn-modify');
+        modifyBtns.forEach(btn => {
             btn.onclick = (e) => {
                 e.stopPropagation();
                 const colorId = parseInt(btn.dataset.id);
-                this.showPreview(colorId);
+                this.showUnlockModal(colorId);
             };
         });
     }
     
-    showPreview(colorId) {
+    showUnlockModal(colorId) {
         const color = this.colors.find(c => c.id === colorId);
         if (!color) return;
-        
-        const rgb = this.cmykToRgb(color.cmyk.c, color.cmyk.m, color.cmyk.y, color.cmyk.k);
         
         const modal = document.createElement('div');
         modal.className = 'modal-overlay';
         modal.innerHTML = `
-            <div class="modal-content" style="max-width: 400px;">
-                <div class="modal-header" style="background: #2d4ed6;">
-                    <h3 style="color: white;">🎨 Vista previa</h3>
+            <div class="modal-content" style="max-width: 450px;">
+                <div class="modal-header" style="background: #b45309;">
+                    <h3 style="color: white;">✏️ Modificar color</h3>
                     <button class="modal-close" style="color: white;">&times;</button>
                 </div>
-                <div class="modal-body" style="text-align: center;">
-                    <div style="width: 150px; height: 150px; background: ${rgb}; border-radius: 12px; margin: 0 auto 1rem; border: 2px solid #4b5563;"></div>
-                    <h4>${color.name}</h4>
-                    <p style="color: #9ca3af; margin-top: 0.5rem;">${color.nk}</p>
-                    <div style="margin-top: 1rem; font-size: 0.8rem; font-family: monospace;">
-                        <div>CMYK: ${color.cmyk.c.toFixed(1)} / ${color.cmyk.m.toFixed(1)} / ${color.cmyk.y.toFixed(1)} / ${color.cmyk.k.toFixed(1)}</div>
-                        <div>LAB: ${color.lab.l.toFixed(1)} / ${color.lab.a.toFixed(1)} / ${color.lab.b.toFixed(1)}</div>
+                <div class="modal-body">
+                    <p><strong>Color:</strong> ${this.escapeHtml(color.name)} (${color.nk})</p>
+                    <div class="form-group">
+                        <label for="unlockReason">Motivo de la modificación:</label>
+                        <textarea id="unlockReason" class="undo-reason-input" rows="3" placeholder="Ej: Se detectó un error en el valor CMYK..."></textarea>
                     </div>
+                    <p style="color: #fbbf24; font-size: 0.75rem;">⚠️ El motivo es obligatorio para desbloquear el color.</p>
                 </div>
                 <div class="modal-buttons">
-                    <button class="btn btn-primary close-modal">Cerrar</button>
+                    <button class="btn btn-secondary cancel-unlock">Cancelar</button>
+                    <button class="btn btn-primary confirm-unlock">Desbloquear</button>
                 </div>
             </div>
         `;
@@ -358,42 +384,132 @@ class CreatorView {
         };
         
         modal.querySelector('.modal-close').onclick = closeModal;
-        modal.querySelector('.close-modal').onclick = closeModal;
-        modal.onclick = (e) => { if (e.target === modal) closeModal(); };
-    }
-    
-    cmykToRgb(c, m, y, k) {
-        const r = 255 * (1 - c / 100) * (1 - k / 100);
-        const g = 255 * (1 - m / 100) * (1 - k / 100);
-        const b = 255 * (1 - y / 100) * (1 - k / 100);
-        return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
+        modal.querySelector('.cancel-unlock').onclick = closeModal;
+        
+        const reasonTextarea = modal.querySelector('#unlockReason');
+        const confirmBtn = modal.querySelector('.confirm-unlock');
+        
+        confirmBtn.onclick = () => {
+            const reason = reasonTextarea.value.trim();
+            if (!reason) {
+                alert('⚠️ Debe ingresar un motivo para desbloquear el color.');
+                return;
+            }
+            this.unlockColor(colorId, reason);
+            closeModal();
+        };
+        
+        modal.onclick = (e) => {
+            if (e.target === modal) closeModal();
+        };
     }
     
     resetTable() {
         this.colors = [];
         this.nextId = 1;
-        this.addColor();
+        this.historyLog = [];
+        // No agregar color por defecto, el usuario debe agregar manualmente con motivo
         this.renderTable();
+    }
+    
+    async loadTxtFile() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.txt';
+        
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const content = event.target.result;
+                this.parseAndLoadContent(content);
+            };
+            reader.readAsText(file);
+        };
+        
+        input.click();
+    }
+    
+    parseAndLoadContent(content) {
+        const lines = content.split(/\r?\n/);
+        let dataStarted = false;
+        const loadedColors = [];
+        
+        for (let line of lines) {
+            if (line.trim() === '') continue;
+            if (line.trim() === 'BEGIN_DATA') { dataStarted = true; continue; }
+            if (dataStarted && line.trim() === 'END_DATA') break;
+            if (!dataStarted) continue;
+            
+            const match = line.match(/^(\d+)\.?\s+(?:"([^"]+)"|([^\s]+))\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)/);
+            
+            if (match) {
+                let fullName = match[2] || match[3];
+                if (fullName) {
+                    const nkMatch = fullName.match(/(NK\d+)$/i);
+                    const nk = nkMatch ? nkMatch[1] : 'NK001';
+                    const name = fullName.replace(/\s+NK\d+$/i, '').trim();
+                    
+                    loadedColors.push({
+                        name: name,
+                        nk: nk,
+                        cmyk: {
+                            c: parseFloat(match[4]),
+                            m: parseFloat(match[5]),
+                            y: parseFloat(match[6]),
+                            k: parseFloat(match[7])
+                        },
+                        lab: {
+                            l: parseFloat(match[8]),
+                            a: parseFloat(match[9]),
+                            b: parseFloat(match[10])
+                        },
+                        isLocked: false
+                    });
+                }
+            }
+        }
+        
+        if (loadedColors.length > 0) {
+            this.colors = [];
+            this.nextId = 1;
+            for (const color of loadedColors) {
+                this.addColor(color);
+            }
+            this.renderTable();
+            alert(`✅ Cargados ${loadedColors.length} colores desde el archivo.`);
+        } else {
+            alert('⚠️ No se encontraron colores en el archivo.');
+        }
     }
     
     getExportData() {
         const exportItems = [];
+        const processedColors = new Set();
         
         for (const color of this.colors) {
-            if (!color.isComplementary) {
-                exportItems.push({
-                    name: `${color.name} ${color.nk}`,
-                    cmyk: [color.cmyk.c, color.cmyk.m, color.cmyk.y, color.cmyk.k],
-                    lab: [color.lab.l, color.lab.a, color.lab.b]
-                });
-                
-                const complementarios = this.colors.filter(c => c.parentId === color.id);
-                for (const comp of complementarios) {
+            const key = `${color.name}|${color.nk}`;
+            if (processedColors.has(key)) continue;
+            processedColors.add(key);
+            
+            exportItems.push({
+                name: `${color.name} ${color.nk}`,
+                cmyk: [color.cmyk.c, color.cmyk.m, color.cmyk.y, color.cmyk.k],
+                lab: [color.lab.l, color.lab.a, color.lab.b]
+            });
+            
+            const complementaryName = this.getComplementaryName(color.name);
+            if (complementaryName && complementaryName !== color.name) {
+                const compKey = `${complementaryName}|${color.nk}`;
+                if (!processedColors.has(compKey)) {
                     exportItems.push({
-                        name: `${comp.name} ${comp.nk}`,
-                        cmyk: [comp.cmyk.c, comp.cmyk.m, comp.cmyk.y, comp.cmyk.k],
-                        lab: [comp.lab.l, comp.lab.a, comp.lab.b]
+                        name: `${complementaryName} ${color.nk}`,
+                        cmyk: [color.cmyk.c, color.cmyk.m, color.cmyk.y, color.cmyk.k],
+                        lab: [color.lab.l, color.lab.a, color.lab.b]
                     });
+                    processedColors.add(compKey);
                 }
             }
         }
@@ -442,7 +558,9 @@ class CreatorView {
         }
         
         const content = this.generateCGATSContent(exportItems);
-        const fileName = `color_creator_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+        const fileName = `color_creator_${timestamp}.txt`;
+        
         const blob = new Blob([content], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -459,8 +577,3 @@ class CreatorView {
         return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 }
-
-// Inicializar cuando el DOM esté listo
-document.addEventListener('DOMContentLoaded', () => {
-    window.creatorView = new CreatorView();
-});
