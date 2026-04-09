@@ -1,0 +1,260 @@
+/* ============================================ */
+/* ASSIGNMENT VIEW - Estilos para asignación de trabajo */
+/* ============================================ */
+
+.assignment-container {
+    padding: 0.5rem 0;
+}
+
+.assignment-header {
+    margin-bottom: 1.5rem;
+}
+
+.assignment-header h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #eab308;
+    margin-bottom: 0.25rem;
+}
+
+.assignment-header h3 i {
+    margin-right: 0.5rem;
+    color: #00e5ff;
+}
+
+.assignment-header p {
+    font-size: 0.8rem;
+    color: #9ca3af;
+}
+
+.assignment-form {
+    background: #0c0c12;
+    border: 1px solid #2d3748;
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.assignment-form .form-group {
+    margin-bottom: 1.25rem;
+}
+
+.assignment-form label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #9ca3af;
+    margin-bottom: 0.5rem;
+}
+
+.assignment-form label i {
+    margin-right: 0.5rem;
+    color: #00e5ff;
+}
+
+.assignment-select {
+    width: 100%;
+    padding: 0.6rem 1rem;
+    background: #1f1f2a;
+    border: 1px solid #4b5563;
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.assignment-select:hover {
+    border-color: #6b7280;
+}
+
+.assignment-select:focus {
+    outline: none;
+    border-color: #00e5ff;
+    box-shadow: 0 0 5px rgba(0, 229, 255, 0.3);
+}
+
+.assignment-form textarea {
+    width: 100%;
+    padding: 0.6rem 1rem;
+    background: #1f1f2a;
+    border: 1px solid #4b5563;
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-size: 0.85rem;
+    font-family: 'Rubik', sans-serif;
+    resize: vertical;
+    transition: all 0.2s;
+}
+
+.assignment-form textarea:focus {
+    outline: none;
+    border-color: #00e5ff;
+    box-shadow: 0 0 5px rgba(0, 229, 255, 0.3);
+}
+
+.assignment-buttons {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.assignment-buttons button {
+    padding: 0.6rem 1.5rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+}
+
+.assignment-buttons .btn-primary {
+    background: transparent;
+    border: 1.5px solid #00e5ff;
+    color: #00e5ff;
+}
+
+.assignment-buttons .btn-primary:hover {
+    background: rgba(0, 229, 255, 0.1);
+    transform: translateY(-1px);
+    box-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
+}
+
+.assignment-buttons .btn-secondary {
+    background: transparent;
+    border: 1.5px solid #9ca3af;
+    color: #9ca3af;
+}
+
+.assignment-buttons .btn-secondary:hover {
+    background: rgba(156, 163, 175, 0.1);
+    transform: translateY(-1px);
+}
+
+.assignment-history {
+    background: #0c0c12;
+    border: 1px solid #2d3748;
+    border-radius: 10px;
+    padding: 1.5rem;
+}
+
+.assignment-history h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #eab308;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #2d3748;
+}
+
+.assignment-history h4 i {
+    margin-right: 0.5rem;
+    color: #00e5ff;
+}
+
+.assignment-history .history-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.assignment-item {
+    background: #1f1f2a;
+    border: 1px solid #2d3748;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    transition: all 0.2s;
+}
+
+.assignment-item:hover {
+    border-color: #00e5ff;
+    background: rgba(0, 229, 255, 0.05);
+}
+
+.assignment-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.assignment-date {
+    font-size: 0.7rem;
+    color: #6b7280;
+    font-family: monospace;
+}
+
+.assignment-badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 1rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.assignment-badge.plotter {
+    background: rgba(0, 229, 255, 0.2);
+    color: #00e5ff;
+    border: 1px solid rgba(0, 229, 255, 0.3);
+}
+
+.assignment-badge.user {
+    background: rgba(74, 222, 128, 0.2);
+    color: #4ade80;
+    border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.assignment-details {
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: #9ca3af;
+}
+
+.assignment-details p {
+    margin: 0.25rem 0;
+}
+
+.assignment-filename {
+    color: #eab308;
+    font-weight: 500;
+}
+
+.assignment-comment {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: #0c0c12;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    color: #9ca3af;
+    border-left: 3px solid #00e5ff;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: #6b7280;
+}
+
+.empty-icon {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+    opacity: 0.5;
+}
+
+@media (max-width: 768px) {
+    .assignment-buttons {
+        flex-direction: column;
+    }
+    
+    .assignment-buttons button {
+        width: 100%;
+    }
+    
+    .assignment-item-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}

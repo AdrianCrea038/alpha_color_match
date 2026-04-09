@@ -8,6 +8,7 @@ export class DevelopmentView {
         this.colors = [];
         this.nextId = 1;
         this.currentUser = 'usuario';
+        this.history = [];
         
         this.container = null;
         this.tableBody = null;
@@ -27,6 +28,11 @@ export class DevelopmentView {
         this.render();
         this.bindEvents();
         console.log('✅ DevelopmentView inicializado');
+    }
+    
+    normalizeName(name) {
+        if (!name) return '';
+        return name.toUpperCase().replace(/\s+/g, ' ').trim();
     }
     
     loadFromLocalStorage() {
@@ -70,7 +76,7 @@ export class DevelopmentView {
     }
     
     parseImportedData(content) {
-        if (content.includes('<table') && content.includes('<td>')) {
+        if (content.includes('<table') && content.includes('<tr>')) {
             this.parseHTMLTable(content);
             return;
         }
@@ -347,7 +353,6 @@ export class DevelopmentView {
                     this.addHistoryEntry('UPLOAD_TXT_LIBRARY', `TXT "${file.name}" cargado a librería del plotter ${plotter}`, reason);
                     alert(`✅ Archivo "${file.name}" cargado a librería del plotter ${plotter}.`);
                     
-                    // Actualizar el selector de "Crear TXT"
                     if (this.app.creatorView) {
                         this.app.creatorView.updateLibrarySelect();
                     }
@@ -358,7 +363,7 @@ export class DevelopmentView {
             reader.readAsText(file);
         };
         
-        modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+        // ELIMINADO: modal.onclick para que NO se cierre al hacer clic fuera
     }
     
     // ============================================================
@@ -484,13 +489,13 @@ export class DevelopmentView {
                     }
                 };
                 
-                modal3.onclick = (e) => { if (e.target === modal3) closeModal3(); };
+                // ELIMINADO: modal3.onclick para que NO se cierre al hacer clic fuera
             };
             
-            modal2.onclick = (e) => { if (e.target === modal2) closeModal2(); };
+            // ELIMINADO: modal2.onclick para que NO se cierre al hacer clic fuera
         };
         
-        modal1.onclick = (e) => { if (e.target === modal1) closeModal1(); };
+        // ELIMINADO: modal1.onclick para que NO se cierre al hacer clic fuera
     }
     
     executeDeleteAllTable(motivo) {
@@ -569,13 +574,14 @@ export class DevelopmentView {
                     <div id="historyTableContainer" style="overflow-x: auto;">
                         <table class="history-table" style="width:100%; border-collapse: collapse;">
                             <thead>
-                                66<th style="text-align:left; padding:0.5rem; background:#111117;">Fecha/Hora</th>
+                                <tr><th style="text-align:left; padding:0.5rem; background:#111117;">Fecha/Hora</th>
                                 <th style="text-align:left; padding:0.5rem; background:#111117;">Usuario</th>
                                 <th style="text-align:left; padding:0.5rem; background:#111117;">Acción</th>
                                 <th style="text-align:left; padding:0.5rem; background:#111117;">Detalle</th>
+                            </tr>
                             </thead>
                             <tbody id="historyTableBody"></tbody>
-                          </table>
+                        </table>
                     </div>
                     <div id="historyCount" style="margin-top: 1rem; font-size: 0.8rem; color: #6b7280; text-align: center;"></div>
                 </div>
@@ -627,10 +633,10 @@ export class DevelopmentView {
                 
                 return `
                     <tr style="border-bottom: 1px solid #1e1e2c;">
-                        <td style="padding:0.75rem 0.5rem; font-size:0.75rem; white-space:nowrap;">${dateStr}<\/td>
-                        <td style="padding:0.75rem 0.5rem; font-size:0.75rem;">${this.escapeHtml(entry.user)}<\/td>
-                        <td style="padding:0.75rem 0.5rem; font-size:0.75rem;"><span class="history-action ${actionClass}">${actionIcon} ${actionText}</span><\/td>
-                        <td style="padding:0.75rem 0.5rem; font-size:0.75rem;">${detailHtml}<\/td>
+                        <td style="padding:0.75rem 0.5rem; font-size:0.75rem; white-space:nowrap;">${dateStr}</td>
+                        <td style="padding:0.75rem 0.5rem; font-size:0.75rem;">${this.escapeHtml(entry.user)}</td>
+                        <td style="padding:0.75rem 0.5rem; font-size:0.75rem;"><span class="history-action ${actionClass}">${actionIcon} ${actionText}</span></td>
+                        <td style="padding:0.75rem 0.5rem; font-size:0.75rem;">${detailHtml}</td>
                     </tr>
                 `;
             }).join('');
@@ -645,7 +651,8 @@ export class DevelopmentView {
         
         modal.querySelector('.modal-close').onclick = closeModal;
         modal.querySelector('.close-history-modal').onclick = closeModal;
-        modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+        
+        // ELIMINADO: modal.onclick para que NO se cierre al hacer clic fuera
     }
     
     getActionClass(action) {
@@ -658,6 +665,7 @@ export class DevelopmentView {
             case 'IMPORT_CSV': return 'history-import';
             case 'DELETE_ALL_TABLE': return 'history-delete-all';
             case 'UPLOAD_TXT_LIBRARY': return 'history-import';
+            case 'ADD_COMPLEMENTARY': return 'history-add';
             default: return '';
         }
     }
@@ -672,6 +680,7 @@ export class DevelopmentView {
             case 'IMPORT_CSV': return '📂';
             case 'DELETE_ALL_TABLE': return '⚠️';
             case 'UPLOAD_TXT_LIBRARY': return '📚';
+            case 'ADD_COMPLEMENTARY': return '📎';
             default: return '📝';
         }
     }
@@ -686,6 +695,7 @@ export class DevelopmentView {
             case 'IMPORT_CSV': return 'IMPORTADO CSV';
             case 'DELETE_ALL_TABLE': return 'TABLA ELIMINADA';
             case 'UPLOAD_TXT_LIBRARY': return 'TXT CARGADO A LIBRERÍA';
+            case 'ADD_COMPLEMENTARY': return 'COMPLEMENTARIO AGREGADO';
             default: return action;
         }
     }
@@ -756,7 +766,7 @@ export class DevelopmentView {
             closeModal();
         };
         
-        modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+        // ELIMINADO: modal.onclick para que NO se cierre al hacer clic fuera
     }
     
     deleteColorFromGroup(groupName, colorName, reason) {
@@ -793,6 +803,24 @@ export class DevelopmentView {
         }
     }
     
+    addColor(colorData = null) {
+        const newId = this.nextId++;
+        const newColor = {
+            id: newId,
+            name: colorData ? colorData.name : '',
+            nk: colorData ? colorData.nk : '',
+            cmyk: colorData ? { ...colorData.cmyk } : { c: 0, m: 0, y: 0, k: 0 },
+            lab: colorData ? { ...colorData.lab } : { l: 100, a: 0, b: 0 },
+            group: colorData ? colorData.group : '',
+            approved: false,
+            createdAt: new Date().toISOString(),
+            modifiedAt: new Date().toISOString()
+        };
+        this.colors.push(newColor);
+        this.saveToLocalStorage();
+        return newColor;
+    }
+    
     // ============================================================
     // AGREGAR/EDITAR COLOR - Con checkboxes de complementarios
     // ============================================================
@@ -801,13 +829,6 @@ export class DevelopmentView {
         const groups = this.getGroups();
         const groupOptions = Array.from(groups.keys()).sort();
         const isEditingApproved = colorToEdit && colorToEdit.approved === true;
-        
-        // Obtener los complementarios del grupo seleccionado
-        const getComplementaryFromGroup = (selectedGroup) => {
-            if (!selectedGroup || !this.app) return [];
-            const groupColors = groups.get(selectedGroup) || [];
-            return groupColors.filter(c => c !== colorToEdit?.name);
-        };
         
         const modal = document.createElement('div');
         modal.className = 'modal-overlay';
@@ -897,7 +918,6 @@ export class DevelopmentView {
         const complementaryCheckboxes = modal.querySelector('#complementaryCheckboxes');
         const selectAllCheckbox = modal.querySelector('#selectAllComplementary');
         
-        // Función para actualizar los checkboxes de complementarios
         const updateComplementaryCheckboxes = () => {
             const selectedGroup = groupSelect.value;
             if (!selectedGroup || selectedGroup === '__NEW__') {
@@ -923,7 +943,6 @@ export class DevelopmentView {
             
             complementaryContainer.style.display = 'block';
             
-            // Actualizar select all
             const updateSelectAll = () => {
                 const cbs = complementaryCheckboxes.querySelectorAll('.complementary-cb');
                 const allChecked = cbs.length > 0 && Array.from(cbs).every(cb => cb.checked);
@@ -1017,7 +1036,6 @@ export class DevelopmentView {
                 }
             }
             
-            // Agregar complementarios seleccionados
             const selectedComplementaries = Array.from(complementaryCheckboxes.querySelectorAll('.complementary-cb:checked'))
                 .map(cb => cb.value);
             
@@ -1031,9 +1049,10 @@ export class DevelopmentView {
                         nk: nk,
                         cmyk: { c, m, y, k },
                         lab: { l, a, b },
+                        group: selectedGroup,
                         isLocked: false
                     });
-                    this.addHistoryEntry('ADD_COMPLEMENTARY', `Complementario "${compName}" agregado al grupo ${selectedGroup}`, reason);
+                    this.addHistoryEntry('ADD_COMPLEMENTARY', `Complementario "${compName}" agregado al grupo ${selectedGroup}`, reason || editReason);
                 }
             }
             
@@ -1043,13 +1062,12 @@ export class DevelopmentView {
             closeModal();
         };
         
-        // Si hay un grupo seleccionado por defecto, mostrar complementarios
         if (colorToEdit && colorToEdit.group) {
             groupSelect.value = colorToEdit.group;
             updateComplementaryCheckboxes();
         }
         
-        modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+        // ELIMINADO: modal.onclick para que NO se cierre al hacer clic fuera
     }
     
     addComplementaryColor(name, nk) {
@@ -1060,7 +1078,7 @@ export class DevelopmentView {
             lab: { l: 100, a: 0, b: 0 },
             isLocked: false
         });
-        this.addToHistory(this.nextId - 1, 'ADD_COMPLEMENTARY', `Complementario de ${name} agregado automáticamente`);
+        this.addHistoryEntry('ADD_COMPLEMENTARY', `Complementario de ${name} agregado automáticamente`, 'Auto-agregado');
     }
     
     approveColor(colorId) {
@@ -1075,7 +1093,7 @@ export class DevelopmentView {
         let groupRow = null;
         for (const row of this.app.equivalencyRows) {
             for (const existingColor of row) {
-                if (this.normalizeGroupName(existingColor) === this.normalizeGroupName(color.group)) {
+                if (this.normalizeName(existingColor) === this.normalizeName(color.group)) {
                     groupRow = row;
                     break;
                 }
@@ -1303,10 +1321,10 @@ showpage
                 <div class="development-table-wrapper">
                     <table class="development-table">
                         <thead>
-                            60<th>ID</th><th>Nombre</th><th>NK</th><th>C</th><th>M</th><th>Y</th><th>K</th><th>Grupo</th><th>Estado</th><th>Acciones</th>
+                            <tr><th>ID</th><th>Nombre</th><th>NK</th><th>C</th><th>M</th><th>Y</th><th>K</th><th>Grupo</th><th>Estado</th><th>Acciones</th>
                             </thead>
                         <tbody id="devTableBody"></tbody>
-                      </table>
+                    </table>
                 </div>
                 
                 <div class="development-groups">

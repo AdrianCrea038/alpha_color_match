@@ -1,11 +1,12 @@
 // ============================================================
-// ALPHA COLOR MATCH - VERSIÓN FINAL CORREGIDA
+// ALPHA COLOR MATCH - VERSIÓN CORREGIDA (Complementarios SIEMPRE con nombres EXACTOS)
 // ============================================================
 
 import { CreatorView } from './modules/views/creatorView.js';
 import { EPSView } from './modules/views/epsView.js';
 import { DevelopmentView } from './modules/views/developmentView.js';
 import { HistoryView } from './modules/views/historyView.js';
+import { AssignmentView } from './modules/views/assignmentView.js';
 
 class AlphaColorMatch {
     constructor() {
@@ -16,18 +17,17 @@ class AlphaColorMatch {
         this.deletedPending = new Set();
         this.groupSelections = new Map();
         this.manualGroupSelections = new Set();
-        this.autoAddedItems = [];
         
         // Librería de TXTs por plotter
-        this.libraryTxts = []; // { plotter, name, content, uploadDate }
+        this.libraryTxts = [];
         
         // Bandeja de entrada (inbox)
-        this.inboxItems = []; // { id, filename, content, user, reason, date, colorCount, plotter, isRead }
+        this.inboxItems = [];
         
         // Usuario actual (temporal)
         this.currentUser = 'usuario_admin';
         
-        // Tabla de equivalencia de nombres
+        // Tabla de equivalencia de nombres (EXACTOS, sin modificar)
         this.equivalencyRows = [
             ["00A BLACK", "03S TM Black", "03T TM BLACK", "002 BLACK"],
             ["06F ANTHRACITE", "05X TM Anthracite"],
@@ -90,8 +90,12 @@ class AlphaColorMatch {
         this.epsView = null;
         this.developmentView = null;
         this.historyView = null;
+        this.assignmentView = null;
         
+        // Construir grupos de equivalencia con nombres EXACTOS
         this.equivalenceGroups = this.buildEquivalenceGroups();
+        // Mapa de nombre base a grupo (para búsqueda rápida)
+        this.nameToEquivalenceGroup = this.buildNameToEquivalenceMap();
         
         this.init();
         this.loadFromLocalStorage();
@@ -107,8 +111,7 @@ class AlphaColorMatch {
             selectedPending: Array.from(this.selectedPending),
             deletedPending: Array.from(this.deletedPending),
             groupSelections: Array.from(this.groupSelections.entries()),
-            manualGroupSelections: Array.from(this.manualGroupSelections),
-            autoAddedItems: this.autoAddedItems
+            manualGroupSelections: Array.from(this.manualGroupSelections)
         };
         localStorage.setItem('alphaColorMatchData', JSON.stringify(dataToSave));
         console.log('💾 Datos guardados en localStorage');
@@ -126,7 +129,6 @@ class AlphaColorMatch {
                 this.deletedPending = new Set(data.deletedPending || []);
                 this.groupSelections = new Map(data.groupSelections || []);
                 this.manualGroupSelections = new Set(data.manualGroupSelections || []);
-                this.autoAddedItems = data.autoAddedItems || [];
                 this.updateUIFromLoadedData();
                 console.log('📂 Datos cargados desde localStorage');
             } catch (e) {
@@ -192,6 +194,10 @@ class AlphaColorMatch {
         }
         this.saveLibraryTxtsToLocalStorage();
         console.log(`📚 TXT "${name}" agregado a librería del plotter ${plotter}`);
+        
+        if (this.assignmentView) {
+            this.assignmentView.updateTxtList();
+        }
     }
     
     getTxtsByPlotter(plotter) {
@@ -204,6 +210,10 @@ class AlphaColorMatch {
             this.libraryTxts.splice(index, 1);
             this.saveLibraryTxtsToLocalStorage();
             console.log(`📚 TXT "${name}" eliminado de librería del plotter ${plotter}`);
+            
+            if (this.assignmentView) {
+                this.assignmentView.updateTxtList();
+            }
             return true;
         }
         return false;
@@ -318,7 +328,6 @@ class AlphaColorMatch {
             this.deletedPending.clear();
             this.groupSelections.clear();
             this.manualGroupSelections.clear();
-            this.autoAddedItems = [];
             this.libraryTxts = [];
             this.inboxItems = [];
             
@@ -378,6 +387,7 @@ class AlphaColorMatch {
                 ["87F BRIGHT CERAMIC", "87F TM BRIGHT CERAMIC"]
             ];
             this.buildEquivalenceGroups();
+            this.nameToEquivalenceGroup = this.buildNameToEquivalenceMap();
             
             this.updateFileInfo('primary', 'Ningún archivo cargado', 0);
             this.updateFileInfo('secondary', 'Ningún archivo cargado', 0);
@@ -389,6 +399,11 @@ class AlphaColorMatch {
             
             const exportBtn = document.getElementById('exportBtn');
             if (exportBtn) exportBtn.disabled = true;
+            
+            if (this.assignmentView) {
+                this.assignmentView.updateTxtList();
+                this.assignmentView.renderHistory();
+            }
             
             alert('✅ Caché limpiada correctamente');
             console.log('🗑️ Caché limpiada');
@@ -429,44 +444,40 @@ class AlphaColorMatch {
         }, 2500);
     }
     
+    // Normalización SOLO para búsqueda interna, no para modificar nombres
+    normalizeForSearch(name) {
+        if (!name) return '';
+        return name.toUpperCase().replace(/\s+/g, ' ').trim().replace(/\bTM\b/g, '');
+    }
+    
     buildEquivalenceGroups() {
-        const nameToGroup = new Map();
         const groups = [];
+        const processed = new Set();
         
         for (const row of this.equivalencyRows) {
-            const names = row.filter(name => name && name.trim() !== '');
-            if (names.length === 0) continue;
-            const normalizedNames = names.map(name => this.normalizeBaseName(name));
+            const validNames = row.filter(n => n && n.trim() !== '');
+            if (validNames.length === 0) continue;
             
-            let existingGroup = null;
-            for (const normName of normalizedNames) {
-                if (nameToGroup.has(normName)) {
-                    existingGroup = nameToGroup.get(normName);
-                    break;
-                }
+            const group = new Set();
+            for (const name of validNames) {
+                group.add(name);
             }
-            
-            let targetGroup = existingGroup;
-            if (!targetGroup) {
-                targetGroup = new Set();
-                groups.push(targetGroup);
-            }
-            
-            for (const normName of normalizedNames) {
-                targetGroup.add(normName);
-                nameToGroup.set(normName, targetGroup);
+            groups.push(group);
+            for (const name of validNames) {
+                processed.add(this.normalizeForSearch(name));
             }
         }
         
+        // Agregar nombres huérfanos (que no están en ninguna fila)
         for (const row of this.equivalencyRows) {
             for (const name of row) {
                 if (!name || name.trim() === '') continue;
-                const norm = this.normalizeBaseName(name);
-                if (!nameToGroup.has(norm)) {
+                const norm = this.normalizeForSearch(name);
+                if (!processed.has(norm)) {
                     const group = new Set();
-                    group.add(norm);
+                    group.add(name);
                     groups.push(group);
-                    nameToGroup.set(norm, group);
+                    processed.add(norm);
                 }
             }
         }
@@ -474,30 +485,41 @@ class AlphaColorMatch {
         return groups;
     }
     
-    getEquivalenceGroup(baseName) {
-        const norm = this.normalizeBaseName(baseName);
+    buildNameToEquivalenceMap() {
+        const map = new Map();
         for (const group of this.equivalenceGroups) {
-            if (group.has(norm)) {
-                return group;
+            const groupArray = Array.from(group);
+            for (const name of groupArray) {
+                map.set(this.normalizeForSearch(name), groupArray);
             }
         }
-        return null;
+        return map;
     }
     
-    areEquivalent(baseName1, baseName2) {
-        const norm1 = this.normalizeBaseName(baseName1);
-        const norm2 = this.normalizeBaseName(baseName2);
+    getAllEquivalentNamesExact(originalName) {
+        // Buscar por nombre exacto primero
+        const searchKey = this.normalizeForSearch(originalName);
+        const group = this.nameToEquivalenceGroup.get(searchKey);
+        
+        if (group && group.length > 0) {
+            // Devolver TODOS los nombres EXACTOS del grupo
+            return group;
+        }
+        
+        // Si no está en ningún grupo, devolver solo el original
+        return [originalName];
+    }
+    
+    areEquivalent(name1, name2) {
+        const norm1 = this.normalizeForSearch(name1);
+        const norm2 = this.normalizeForSearch(name2);
         if (norm1 === norm2) return true;
-        const group1 = this.getEquivalenceGroup(baseName1);
-        const group2 = this.getEquivalenceGroup(baseName2);
+        
+        const group1 = this.nameToEquivalenceGroup.get(norm1);
+        const group2 = this.nameToEquivalenceGroup.get(norm2);
+        
         if (group1 && group2 && group1 === group2) return true;
         return false;
-    }
-    
-    getEquivalentNames(baseName) {
-        const group = this.getEquivalenceGroup(baseName);
-        if (!group) return [this.normalizeBaseName(baseName)];
-        return Array.from(group);
     }
     
     init() {
@@ -506,6 +528,7 @@ class AlphaColorMatch {
         this.initEPSView();
         this.initDevelopmentView();
         this.initHistoryView();
+        this.initAssignmentView();
         this.initViews();
         
         const clearCacheBtn = document.getElementById('clearCacheBtn');
@@ -545,6 +568,11 @@ class AlphaColorMatch {
         console.log('✅ HistoryView (Bandeja) inicializado');
     }
     
+    initAssignmentView() {
+        this.assignmentView = new AssignmentView(this);
+        console.log('✅ AssignmentView inicializado');
+    }
+    
     initViews() {
         const menuItems = document.querySelectorAll('.menu-item');
         const views = {
@@ -552,7 +580,8 @@ class AlphaColorMatch {
             history: document.getElementById('historyView'),
             creator: document.getElementById('creatorView'),
             eps: document.getElementById('epsView'),
-            development: document.getElementById('developmentView')
+            development: document.getElementById('developmentView'),
+            assignment: document.getElementById('assignmentView')
         };
         
         const switchView = (viewName) => {
@@ -579,6 +608,10 @@ class AlphaColorMatch {
             }
             if (viewName === 'history' && this.historyView) {
                 this.historyView.render();
+            }
+            if (viewName === 'assignment' && this.assignmentView) {
+                this.assignmentView.updateTxtList();
+                this.assignmentView.renderHistory();
             }
         };
         
@@ -709,14 +742,6 @@ class AlphaColorMatch {
         return isReady;
     }
     
-    normalizeBaseName(baseName) {
-        if (!baseName) return '';
-        let cleaned = baseName.toUpperCase();
-        cleaned = cleaned.replace(/\bTM\b/g, '');
-        cleaned = cleaned.replace(/\s+/g, ' ').trim();
-        return cleaned;
-    }
-    
     extractNK(fullName) {
         if (!fullName) return null;
         const words = fullName.trim().split(/\s+/);
@@ -751,10 +776,10 @@ class AlphaColorMatch {
     extractBaseName(fullName) {
         if (!fullName) return '';
         const nk = this.extractNK(fullName);
-        if (!nk) return this.normalizeBaseName(fullName);
+        if (!nk) return fullName.trim();
         const nkPattern = new RegExp(`\\s+${nk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
         const base = fullName.replace(nkPattern, '').trim();
-        return this.normalizeBaseName(base);
+        return base;
     }
     
     getEffectiveCmyk(groupId, primaryColor, secondaryColor) {
@@ -880,7 +905,6 @@ class AlphaColorMatch {
         this.deletedPending.clear();
         this.groupSelections.clear();
         this.manualGroupSelections.clear();
-        this.autoAddedItems = [];
         console.log('🔍 Comparando archivos...');
         this.findMatches();
         this.saveToLocalStorage();
@@ -908,6 +932,7 @@ class AlphaColorMatch {
             primaryByNK.get(nk).push({
                 id: color.id,
                 baseName: this.extractBaseName(color.name),
+                fullName: color.name,
                 colorData: color
             });
         }
@@ -919,6 +944,7 @@ class AlphaColorMatch {
             secondaryByNK.get(nk).push({
                 id: color.id,
                 baseName: this.extractBaseName(color.name),
+                fullName: color.name,
                 colorData: color
             });
         }
@@ -935,25 +961,25 @@ class AlphaColorMatch {
             const groups = new Map();
             
             for (const pc of primaryColors) {
-                const groupKey = this.getEquivalenceGroup(pc.baseName);
-                const groupIdKey = groupKey ? Array.from(groupKey).sort().join('|') : pc.baseName;
+                const equivalentGroup = this.nameToEquivalenceGroup.get(this.normalizeForSearch(pc.baseName));
+                const groupIdKey = equivalentGroup ? equivalentGroup.sort().join('|') : pc.baseName;
                 if (!groups.has(groupIdKey)) {
-                    groups.set(groupIdKey, { primarios: [], secundarios: [], groupKey: groupKey });
+                    groups.set(groupIdKey, { primarios: [], secundarios: [], equivalentGroup: equivalentGroup });
                 }
                 groups.get(groupIdKey).primarios.push(pc);
             }
             
             for (const sc of secondaryColors) {
-                const groupKey = this.getEquivalenceGroup(sc.baseName);
-                const groupIdKey = groupKey ? Array.from(groupKey).sort().join('|') : sc.baseName;
+                const equivalentGroup = this.nameToEquivalenceGroup.get(this.normalizeForSearch(sc.baseName));
+                const groupIdKey = equivalentGroup ? equivalentGroup.sort().join('|') : sc.baseName;
                 if (!groups.has(groupIdKey)) {
-                    groups.set(groupIdKey, { primarios: [], secundarios: [], groupKey: groupKey });
+                    groups.set(groupIdKey, { primarios: [], secundarios: [], equivalentGroup: equivalentGroup });
                 }
                 groups.get(groupIdKey).secundarios.push(sc);
             }
             
             for (const [groupIdKey, group] of groups) {
-                const { primarios, secundarios, groupKey } = group;
+                const { primarios, secundarios, equivalentGroup } = group;
                 const actualGroupId = `group_${nk}_${groupCounter++}`;
                 
                 if (primarios.length > 0 && secundarios.length > 0) {
@@ -965,11 +991,12 @@ class AlphaColorMatch {
                                 id: `primary_${primary.id}`,
                                 groupId: actualGroupId,
                                 nk: nk,
-                                primaryData: { id: primary.id, baseName: primary.baseName, colorData: primary.colorData },
-                                secondaryData: { id: secondary.id, baseName: secondary.baseName, colorData: secondary.colorData },
+                                primaryData: { id: primary.id, baseName: primary.baseName, fullName: primary.fullName, colorData: primary.colorData },
+                                secondaryData: { id: secondary.id, baseName: secondary.baseName, fullName: secondary.fullName, colorData: secondary.colorData },
                                 matchType: matchType,
                                 isPending: false,
-                                isSelected: true
+                                isSelected: true,
+                                equivalentGroup: equivalentGroup
                             });
                             processedPrimary.add(primary.id);
                             processedSecondary.add(secondary.id);
@@ -982,11 +1009,12 @@ class AlphaColorMatch {
                                 id: `pending_primary_${primary.id}`,
                                 groupId: null,
                                 nk: nk,
-                                primaryData: { id: primary.id, baseName: primary.baseName, colorData: primary.colorData },
+                                primaryData: { id: primary.id, baseName: primary.baseName, fullName: primary.fullName, colorData: primary.colorData },
                                 secondaryData: null,
                                 matchType: 'pending_primary',
                                 isPending: true,
-                                isSelected: false
+                                isSelected: false,
+                                equivalentGroup: equivalentGroup
                             });
                             processedPrimary.add(primary.id);
                         }
@@ -999,41 +1027,31 @@ class AlphaColorMatch {
                                 groupId: null,
                                 nk: nk,
                                 primaryData: null,
-                                secondaryData: { id: secondary.id, baseName: secondary.baseName, colorData: secondary.colorData },
+                                secondaryData: { id: secondary.id, baseName: secondary.baseName, fullName: secondary.fullName, colorData: secondary.colorData },
                                 matchType: 'pending_secondary',
                                 isPending: true,
-                                isSelected: false
+                                isSelected: false,
+                                equivalentGroup: equivalentGroup
                             });
                             processedSecondary.add(secondary.id);
-                        }
-                    }
-                }
-                
-                if (groupKey && primarios.length > 0) {
-                    const existingNames = new Set();
-                    for (const p of primarios) existingNames.add(p.baseName);
-                    for (const s of secundarios) existingNames.add(s.baseName);
-                    for (const equivalentName of groupKey) {
-                        if (!existingNames.has(equivalentName)) {
-                            const sourceColor = primarios[0].colorData;
-                            this.autoAddedItems.push({
-                                nk: nk,
-                                baseName: equivalentName,
-                                sourceColor: sourceColor,
-                                groupId: actualGroupId
-                            });
-                            existingNames.add(equivalentName);
                         }
                     }
                 }
             }
         }
         
-        results.sort((a, b) => a.nk.localeCompare(b.nk));
+        results.sort((a, b) => {
+            const nkCompare = a.nk.localeCompare(b.nk);
+            if (nkCompare !== 0) return nkCompare;
+            const nameA = a.primaryData?.fullName || a.secondaryData?.fullName || '';
+            const nameB = b.primaryData?.fullName || b.secondaryData?.fullName || '';
+            return nameA.localeCompare(nameB);
+        });
+        
         this.results = results;
         this.renderResults(results);
         this.validateExportReady();
-        console.log(`📊 RESULTADOS: ${results.length}, Auto-agregados: ${this.autoAddedItems.length}`);
+        console.log(`📊 RESULTADOS: ${results.length}`);
     }
     
     renderResults(results) {
@@ -1057,7 +1075,6 @@ class AlphaColorMatch {
             <span class="badge secondary">➕ Pendientes Secundario: ${pendingSecondary}</span>
             <span class="badge" style="background:#15803d;">✓ Agregados: ${selectedCount}</span>
             <span class="badge" style="background:#991b1b;">🗑️ Eliminados: ${deletedCount}</span>
-            <span class="badge" style="background:#eab308;">✨ Auto-agregados: ${this.autoAddedItems.length}</span>
         `;
         
         tbody.innerHTML = results.map(item => {
@@ -1114,8 +1131,8 @@ class AlphaColorMatch {
                 }
             }
             
-            const primaryName = item.primaryData ? item.primaryData.baseName : '—';
-            const secondaryName = item.secondaryData ? item.secondaryData.baseName : '—';
+            const primaryName = item.primaryData ? (item.primaryData.fullName || item.primaryData.baseName) : '—';
+            const secondaryName = item.secondaryData ? (item.secondaryData.fullName || item.secondaryData.baseName) : '—';
             const primaryCmyk = item.primaryData?.colorData?.cmyk;
             const secondaryCmyk = item.secondaryData?.colorData?.cmyk;
             
@@ -1131,11 +1148,77 @@ class AlphaColorMatch {
         }).join('');
     }
     
+    // ============================================================
+    // NUEVO MÉTODO: Expande con TODOS los equivalentes EXACTOS de la tabla
+    // Los colores se agrupan por NK para que queden JUNTOS
+    // ============================================================
+    expandWithAllEquivalentsByNK(exportItems) {
+        // Agrupar por NK primero
+        const itemsByNK = new Map();
+        
+        for (const item of exportItems) {
+            const nk = this.extractNK(item.name);
+            if (!nk) continue;
+            
+            if (!itemsByNK.has(nk)) {
+                itemsByNK.set(nk, []);
+            }
+            itemsByNK.get(nk).push(item);
+        }
+        
+        const expandedItems = [];
+        const processedKeys = new Set();
+        
+        // Procesar cada NK por separado para mantener agrupación
+        for (const [nk, items] of itemsByNK) {
+            for (const item of items) {
+                const baseName = this.extractBaseName(item.name);
+                // Obtener TODOS los nombres equivalentes EXACTOS de la tabla
+                const equivalentNames = this.getAllEquivalentNamesExact(baseName);
+                
+                for (const eqName of equivalentNames) {
+                    // Construir el nombre completo con NK
+                    const eqFullName = `${eqName} ${nk}`;
+                    const key = `${eqFullName}|${item.cmyk.join(',')}`;
+                    
+                    if (!processedKeys.has(key)) {
+                        processedKeys.add(key);
+                        expandedItems.push({
+                            name: eqFullName,
+                            cmyk: [...item.cmyk],
+                            lab: [...item.lab],
+                            nk: nk,
+                            originalName: item.name,
+                            isEquivalent: eqName !== baseName
+                        });
+                    }
+                }
+            }
+        }
+        
+        // Ordenar por NK primero, luego por nombre
+        expandedItems.sort((a, b) => {
+            const nkCompare = a.nk.localeCompare(b.nk);
+            if (nkCompare !== 0) return nkCompare;
+            return a.name.localeCompare(b.name);
+        });
+        
+        console.log(`✨ Expansión de equivalentes: ${exportItems.length} originales → ${expandedItems.length} totales (agrupados por NK)`);
+        return expandedItems;
+    }
+    
     buildExportItems() {
         const exportItems = [];
         const processedGroups = new Set();
-        const sortedResults = [...this.results].sort((a, b) => a.nk.localeCompare(b.nk));
+        const sortedResults = [...this.results].sort((a, b) => {
+            const nkCompare = a.nk.localeCompare(b.nk);
+            if (nkCompare !== 0) return nkCompare;
+            const nameA = a.primaryData?.fullName || a.secondaryData?.fullName || '';
+            const nameB = b.primaryData?.fullName || b.secondaryData?.fullName || '';
+            return nameA.localeCompare(nameB);
+        });
         
+        // Primero, obtener los items base de la comparación
         for (const item of sortedResults) {
             if (item.matchType === 'exact' || item.matchType === 'equivalent') {
                 if (processedGroups.has(item.groupId)) continue;
@@ -1143,30 +1226,69 @@ class AlphaColorMatch {
                 const cmyk = this.getEffectiveCmyk(item.groupId, item.primaryData?.colorData, item.secondaryData?.colorData);
                 const lab = this.getEffectiveLab(item.groupId, item.primaryData?.colorData, item.secondaryData?.colorData);
                 if (item.primaryData) {
-                    exportItems.push({ name: item.primaryData.colorData.name, cmyk: cmyk, lab: lab, type: item.matchType });
+                    exportItems.push({ 
+                        name: item.primaryData.fullName || item.primaryData.colorData.name, 
+                        cmyk: cmyk, 
+                        lab: lab, 
+                        type: item.matchType,
+                        nk: item.nk
+                    });
                 }
                 if (item.matchType === 'equivalent' && item.secondaryData) {
-                    exportItems.push({ name: item.secondaryData.colorData.name, cmyk: cmyk, lab: lab, type: item.matchType });
-                }
-                const groupAutos = this.autoAddedItems.filter(a => a.groupId === item.groupId);
-                for (const auto of groupAutos) {
-                    const fullName = `${auto.baseName} ${auto.nk}`;
-                    exportItems.push({ name: fullName, cmyk: cmyk, lab: lab, type: 'auto_added' });
+                    // Evitar duplicados
+                    const secondaryName = item.secondaryData.fullName || item.secondaryData.colorData.name;
+                    const alreadyExists = exportItems.some(e => e.name === secondaryName && e.nk === item.nk);
+                    if (!alreadyExists) {
+                        exportItems.push({ 
+                            name: secondaryName, 
+                            cmyk: cmyk, 
+                            lab: lab, 
+                            type: item.matchType,
+                            nk: item.nk
+                        });
+                    }
                 }
             }
         }
         
+        // Agregar los pendientes que fueron marcados como "Agregar"
         for (const item of this.results) {
             if (this.selectedPending.has(item.id)) {
                 if (item.primaryData) {
-                    exportItems.push({ name: item.primaryData.colorData.name, cmyk: [...item.primaryData.colorData.cmyk], lab: [...item.primaryData.colorData.lab], type: 'added' });
+                    exportItems.push({ 
+                        name: item.primaryData.fullName || item.primaryData.colorData.name, 
+                        cmyk: [...item.primaryData.colorData.cmyk], 
+                        lab: [...item.primaryData.colorData.lab], 
+                        type: 'added',
+                        nk: item.nk
+                    });
                 } else if (item.secondaryData) {
-                    exportItems.push({ name: item.secondaryData.colorData.name, cmyk: [...item.secondaryData.colorData.cmyk], lab: [...item.secondaryData.colorData.lab], type: 'added' });
+                    exportItems.push({ 
+                        name: item.secondaryData.fullName || item.secondaryData.colorData.name, 
+                        cmyk: [...item.secondaryData.colorData.cmyk], 
+                        lab: [...item.secondaryData.colorData.lab], 
+                        type: 'added',
+                        nk: item.nk
+                    });
                 }
             }
         }
         
-        return exportItems;
+        // Eliminar duplicados exactos por nombre
+        const uniqueExportItems = [];
+        const seenNames = new Set();
+        for (const item of exportItems) {
+            const key = `${item.name}|${item.nk}`;
+            if (!seenNames.has(key)) {
+                seenNames.add(key);
+                uniqueExportItems.push(item);
+            }
+        }
+        
+        // Expandir con TODOS los complementarios de la tabla (agrupados por NK)
+        const expandedItems = this.expandWithAllEquivalentsByNK(uniqueExportItems);
+        
+        return expandedItems;
     }
     
     generateCGATSContent(exportItems) {
@@ -1174,7 +1296,17 @@ class AlphaColorMatch {
         const dateStr = `${today.getMonth() + 1}/${today.getDate()}/${today.getFullYear()}`;
         let content = 'CGATS.17\nORIGINATOR\t"ALPHA COLOR MATCH"\nFILE_DESCRIPTOR\t""\n';
         content += `CREATED\t"${dateStr}"\nNUMBER_OF_FIELDS\t9\nBEGIN_DATA_FORMAT\nSAMPLE_ID SAMPLE_NAME CMYK_C CMYK_M CMYK_Y CMYK_K LAB_L LAB_A LAB_B\nEND_DATA_FORMAT\nNUMBER_OF_SETS\t${exportItems.length}\nBEGIN_DATA\n\n`;
-        exportItems.forEach((item, index) => {
+        
+        // Eliminar duplicados finales por nombre exacto
+        const finalUnique = new Map();
+        for (const item of exportItems) {
+            if (!finalUnique.has(item.name)) {
+                finalUnique.set(item.name, item);
+            }
+        }
+        const finalItems = Array.from(finalUnique.values());
+        
+        finalItems.forEach((item, index) => {
             const counter = index + 1;
             content += `${counter}. "${item.name}" ${item.cmyk[0].toFixed(6)} ${item.cmyk[1].toFixed(6)} ${item.cmyk[2].toFixed(6)} ${item.cmyk[3].toFixed(6)} ${item.lab[0].toFixed(6)} ${item.lab[1].toFixed(6)} ${item.lab[2].toFixed(6)}\n`;
         });
@@ -1183,16 +1315,31 @@ class AlphaColorMatch {
     }
     
     showPreviewAndExport() {
-        const exportItems = this.buildExportItems();
+        let exportItems = this.buildExportItems();
         if (exportItems.length === 0) {
             alert('No hay datos para exportar. Asegúrate de haber comparado y seleccionado pendientes.');
             return;
         }
+        
+        // Contar estadísticas
+        const originalCount = exportItems.filter(i => !i.isEquivalent).length;
+        const equivalentCount = exportItems.filter(i => i.isEquivalent).length;
+        
+        // Agrupar por NK para mostrar estadísticas
+        const nkGroups = new Map();
+        for (const item of exportItems) {
+            if (!nkGroups.has(item.nk)) {
+                nkGroups.set(item.nk, []);
+            }
+            nkGroups.get(item.nk).push(item);
+        }
+        
+        let nkStats = '';
+        for (const [nk, items] of nkGroups) {
+            nkStats += `<br><small style="margin-left: 1rem;">📌 NK ${nk}: ${items.length} colores (${items.filter(i => !i.isEquivalent).length} original + ${items.filter(i => i.isEquivalent).length} complementarios)</small>`;
+        }
+        
         const content = this.generateCGATSContent(exportItems);
-        const exactCount = exportItems.filter(i => i.type === 'exact').length;
-        const equivalentCount = exportItems.filter(i => i.type === 'equivalent').length;
-        const addedCount = exportItems.filter(i => i.type === 'added').length;
-        const autoAddedCount = exportItems.filter(i => i.type === 'auto_added').length;
         
         const modal = document.createElement('div');
         modal.className = 'modal-overlay';
@@ -1205,13 +1352,13 @@ class AlphaColorMatch {
                 <div class="modal-body" style="overflow: auto; max-height: 65vh;">
                     <div style="margin-bottom: 1rem; padding: 0.75rem; background: #1e1e2c; border-radius: 0.5rem;">
                         <strong>📊 Resumen:</strong> ${exportItems.length} registros a exportar
-                        <br><small>✅ Coincidencias exactas: ${exactCount}</small>
-                        <br><small style="color: #fbbf24;">🔄 Equivalentes que se agregarán: ${equivalentCount}</small>
-                        <br><small>➕ Agregados manualmente: ${addedCount}</small>
-                        <br><small>✨ Auto-agregados (tabla): ${autoAddedCount}</small>
+                        <br><small>🎨 Colores originales: ${originalCount}</small>
+                        <br><small style="color: #00e5ff;">✨ Complementarios agregados (tabla de equivalencias): ${equivalentCount}</small>
+                        ${nkStats}
+                        <br><small style="color: #eab308;">💡 Los colores están agrupados por NK y ordenados dentro de cada grupo</small>
                     </div>
-                    <div style="font-family: monospace; font-size: 0.7rem; background: #0a0a0a; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; white-space: pre-wrap;">
-                        <pre style="margin: 0; color: #e2e8f0;">${content}</pre>
+                    <div style="font-family: monospace; font-size: 0.7rem; background: #0a0a0a; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; white-space: pre-wrap; max-height: 400px; overflow-y: auto;">
+                        <pre style="margin: 0; color: #e2e8f0;">${content.substring(0, 5000)}${content.length > 5000 ? '\n... (contenido truncado en vista previa)' : ''}</pre>
                     </div>
                 </div>
                 <div class="modal-buttons" style="padding: 1rem; border-top: 1px solid #2d3748; display: flex; gap: 1rem; justify-content: flex-end;">
@@ -1235,11 +1382,23 @@ class AlphaColorMatch {
             this.doExport(exportItems);
             closeModal();
         };
-        modal.onclick = (e) => { if (e.target === modal) closeModal(); };
     }
     
     doExport(exportItems) {
-        const content = this.generateCGATSContent(exportItems);
+        // Asegurar que los complementarios están incluidos y agrupados por NK
+        const expandedItems = this.expandWithAllEquivalentsByNK(exportItems);
+        
+        // Eliminar duplicados finales
+        const uniqueItems = [];
+        const seenNames = new Set();
+        for (const item of expandedItems) {
+            if (!seenNames.has(item.name)) {
+                seenNames.add(item.name);
+                uniqueItems.push(item);
+            }
+        }
+        
+        const content = this.generateCGATSContent(uniqueItems);
         const fileNameInput = document.getElementById('exportFileName');
         let baseFileName = 'alpha_color_export';
         if (fileNameInput && fileNameInput.value.trim() !== '') {
@@ -1255,7 +1414,9 @@ class AlphaColorMatch {
         a.download = fullFileName;
         a.click();
         URL.revokeObjectURL(url);
-        alert(`✅ Archivo exportado con ${exportItems.length} registros en formato CGATS.17`);
+        
+        const complementariosCount = uniqueItems.filter(i => i.isEquivalent).length;
+        alert(`✅ Archivo exportado con ${uniqueItems.length} registros (${complementariosCount} complementarios agregados automáticamente)\nLos colores están agrupados por NK.`);
     }
 }
 
