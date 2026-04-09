@@ -1,5 +1,5 @@
 // ============================================================
-// ALPHA COLOR MATCH - VERSIÓN CORREGIDA (Complementarios SIEMPRE con nombres EXACTOS)
+// ALPHA COLOR MATCH - VERSIÓN CON LOGIN Y ADMIN
 // ============================================================
 
 import { CreatorView } from './modules/views/creatorView.js';
@@ -7,6 +7,9 @@ import { EPSView } from './modules/views/epsView.js';
 import { DevelopmentView } from './modules/views/developmentView.js';
 import { HistoryView } from './modules/views/historyView.js';
 import { AssignmentView } from './modules/views/assignmentView.js';
+import { AdminView } from './modules/views/adminView.js';
+import { ReportsView } from './modules/views/reportsView.js';
+import { Auth, PERMISSIONS } from './modules/auth.js';
 
 class AlphaColorMatch {
     constructor() {
@@ -17,17 +20,19 @@ class AlphaColorMatch {
         this.deletedPending = new Set();
         this.groupSelections = new Map();
         this.manualGroupSelections = new Set();
+        this.groupIds = new Map();
         
-        // Librería de TXTs por plotter
         this.libraryTxts = [];
-        
-        // Bandeja de entrada (inbox)
         this.inboxItems = [];
-        
-        // Usuario actual (temporal)
         this.currentUser = 'usuario_admin';
         
-        // Tabla de equivalencia de nombres (EXACTOS, sin modificar)
+        this.pendingCorrections = [];
+        
+        // Auth
+        this.auth = new Auth();
+        this.adminView = null;
+        this.reportsView = null;
+        
         this.equivalencyRows = [
             ["00A BLACK", "03S TM Black", "03T TM BLACK", "002 BLACK"],
             ["06F ANTHRACITE", "05X TM Anthracite"],
@@ -85,6 +90,7 @@ class AlphaColorMatch {
         ];
         
         this.loadEquivalencyRowsFromLocalStorage();
+        this.loadGroupIdsFromLocalStorage();
         
         this.creatorView = null;
         this.epsView = null;
@@ -92,15 +98,596 @@ class AlphaColorMatch {
         this.historyView = null;
         this.assignmentView = null;
         
-        // Construir grupos de equivalencia con nombres EXACTOS
-        this.equivalenceGroups = this.buildEquivalenceGroups();
-        // Mapa de nombre base a grupo (para búsqueda rápida)
-        this.nameToEquivalenceGroup = this.buildNameToEquivalenceMap();
+        this.equivalenceMap = this.buildEquivalenceMap();
+        this.groupOrder = this.buildGroupOrder();
+        this.ensureGroupIds();
         
         this.init();
+    }
+    
+    // ============================================================
+    // LOGIN
+    // ============================================================
+    initLogin() {
+        const loginContainer = document.getElementById('loginView');
+        const mainApp = document.getElementById('mainApp');
+        const loginBtn = document.getElementById('loginBtn');
+        const loginUsername = document.getElementById('loginUsername');
+        const loginPassword = document.getElementById('loginPassword');
+        const loginError = document.getElementById('loginError');
+        const togglePassword = document.getElementById('toggleLoginPassword');
+        
+        if (togglePassword) {
+            togglePassword.onclick = () => {
+                const type = loginPassword.getAttribute('type') === 'password' ? 'text' : 'password';
+                loginPassword.setAttribute('type', type);
+                togglePassword.classList.toggle('fa-eye');
+                togglePassword.classList.toggle('fa-eye-slash');
+            };
+        }
+        
+        if (loginBtn) {
+            loginBtn.onclick = () => {
+                const username = loginUsername.value.trim();
+                const password = loginPassword.value;
+                
+                const result = this.auth.login(username, password);
+                
+                if (result.success) {
+                    loginError.style.display = 'none';
+                    loginContainer.style.display = 'none';
+                    mainApp.style.display = 'flex';
+                    this.updateUIForUser();
+                    this.loadSessionData();
+                } else {
+                    loginError.textContent = result.error;
+                    loginError.style.display = 'block';
+                }
+            };
+        }
+        
+        const handleEnter = (e) => {
+            if (e.key === 'Enter') loginBtn.click();
+        };
+        loginUsername.addEventListener('keypress', handleEnter);
+        loginPassword.addEventListener('keypress', handleEnter);
+    }
+    
+    loadSessionData() {
         this.loadFromLocalStorage();
         this.loadLibraryTxtsFromLocalStorage();
         this.loadInboxFromLocalStorage();
+        
+        if (this.creatorView) this.creatorView.renderTable();
+        if (this.epsView) this.epsView.renderPreview();
+        if (this.developmentView) this.developmentView.render();
+        if (this.historyView) this.historyView.render();
+        if (this.assignmentView) {
+            this.assignmentView.updateTxtList();
+            this.assignmentView.renderHistory();
+        }
+        if (this.adminView) this.adminView.render();
+        if (this.reportsView) {
+            this.reportsView.updateFilters();
+            this.reportsView.render();
+        }
+    }
+    
+    updateUIForUser() {
+        const user = this.auth.getCurrentUser();
+        const displaySpan = document.getElementById('currentUserDisplay');
+        if (displaySpan) {
+            displaySpan.textContent = `👤 ${user.username}${user.isMaster ? ' (MASTER)' : ''}`;
+        }
+        
+        const menuItems = document.querySelectorAll('.menu-item');
+        menuItems.forEach(item => {
+            const requiredPerm = item.dataset.perm;
+            if (requiredPerm && !this.auth.hasPermission(requiredPerm)) {
+                item.style.display = 'none';
+            } else {
+                item.style.display = 'flex';
+            }
+        });
+        
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.onclick = () => this.logout();
+        }
+    }
+    
+    logout() {
+        this.auth.logout();
+        const loginContainer = document.getElementById('loginView');
+        const mainApp = document.getElementById('mainApp');
+        loginContainer.style.display = 'flex';
+        mainApp.style.display = 'none';
+        document.getElementById('loginUsername').value = '';
+        document.getElementById('loginPassword').value = '';
+    }
+    
+    // ============================================================
+    // NORMALIZACIÓN
+    // ============================================================
+    normalizeSpaces(str) {
+        if (!str) return '';
+        return str.replace(/\s+/g, ' ').trim();
+    }
+    
+    generateGroupId(groupName) {
+        let id = '';
+        
+        if (groupName.includes('BLACK')) id = 'BLK';
+        else if (groupName.includes('WHITE')) id = 'WHT';
+        else if (groupName.includes('GREY') || groupName.includes('GRAY')) id = 'GRY';
+        else if (groupName.includes('ANTHRACITE')) id = 'ANT';
+        else if (groupName.includes('NATURAL')) id = 'NAT';
+        else if (groupName.includes('GOLD')) id = 'GLD';
+        else if (groupName.includes('SILVER')) id = 'SLV';
+        else if (groupName.includes('RED')) id = 'RED';
+        else if (groupName.includes('MAROON')) id = 'MRN';
+        else if (groupName.includes('CRIMSON')) id = 'CRM';
+        else if (groupName.includes('CARDINAL')) id = 'CRD';
+        else if (groupName.includes('GREEN')) id = 'GRN';
+        else if (groupName.includes('OLIVE')) id = 'OLV';
+        else if (groupName.includes('BLUE')) id = 'BLU';
+        else if (groupName.includes('NAVY')) id = 'NVY';
+        else if (groupName.includes('PURPLE')) id = 'PRP';
+        else if (groupName.includes('ORCHID')) id = 'ORC';
+        else if (groupName.includes('PINK')) id = 'PNK';
+        else if (groupName.includes('ORANGE')) id = 'ORG';
+        else if (groupName.includes('CERAMIC')) id = 'CRM';
+        else if (groupName.includes('YELLOW')) id = 'YEL';
+        else if (groupName.includes('BROWN')) id = 'BRN';
+        else if (groupName.includes('CINDER')) id = 'CIN';
+        else if (groupName.includes('TURQUOISE')) id = 'TRQ';
+        else if (groupName.includes('VOLT')) id = 'VOL';
+        else id = groupName.substring(0, 3).toUpperCase();
+        
+        const existingIds = Array.from(this.groupIds.values());
+        let counter = 1;
+        let finalId = id;
+        while (existingIds.includes(finalId)) {
+            finalId = `${id}_${counter}`;
+            counter++;
+        }
+        
+        return finalId;
+    }
+    
+    ensureGroupIds() {
+        for (const group of this.groupOrder) {
+            if (group.length > 0) {
+                const groupKey = group[0];
+                if (!this.groupIds.has(groupKey)) {
+                    this.groupIds.set(groupKey, this.generateGroupId(groupKey));
+                }
+            }
+        }
+        this.saveGroupIdsToLocalStorage();
+    }
+    
+    saveGroupIdsToLocalStorage() {
+        localStorage.setItem('alphaColorMatchGroupIds', JSON.stringify(Array.from(this.groupIds.entries())));
+    }
+    
+    loadGroupIdsFromLocalStorage() {
+        const saved = localStorage.getItem('alphaColorMatchGroupIds');
+        if (saved) {
+            try {
+                this.groupIds = new Map(JSON.parse(saved));
+            } catch(e) {
+                this.groupIds = new Map();
+            }
+        }
+    }
+    
+    getGroupId(groupKey) {
+        return this.groupIds.get(groupKey) || groupKey.substring(0, 6).toUpperCase();
+    }
+    
+    buildEquivalenceMap() {
+        const map = new Map();
+        
+        for (const row of this.equivalencyRows) {
+            const cleanRow = row.map(name => name ? this.normalizeSpaces(name) : '').filter(n => n);
+            if (cleanRow.length === 0) continue;
+            
+            for (const name of cleanRow) {
+                const searchKey = name.toUpperCase();
+                if (!map.has(searchKey)) {
+                    map.set(searchKey, []);
+                }
+                for (const eqName of cleanRow) {
+                    if (!map.get(searchKey).includes(eqName)) {
+                        map.get(searchKey).push(eqName);
+                    }
+                }
+            }
+        }
+        
+        for (const row of this.equivalencyRows) {
+            for (const name of row) {
+                if (!name) continue;
+                const cleanName = this.normalizeSpaces(name);
+                const searchKey = cleanName.toUpperCase();
+                if (!map.has(searchKey)) {
+                    map.set(searchKey, [cleanName]);
+                }
+            }
+        }
+        
+        return map;
+    }
+    
+    buildGroupOrder() {
+        const groups = [];
+        for (const row of this.equivalencyRows) {
+            const cleanRow = row.map(name => name ? this.normalizeSpaces(name) : '').filter(n => n);
+            if (cleanRow.length > 0) {
+                groups.push(cleanRow);
+            }
+        }
+        return groups;
+    }
+    
+    buildEquivalenceGroups() {
+        return this.equivalenceMap;
+    }
+    
+    getGroupKeyForColor(baseName) {
+        const searchKey = baseName.toUpperCase();
+        const equivalents = this.equivalenceMap.get(searchKey);
+        if (equivalents && equivalents.length > 0) {
+            return equivalents[0];
+        }
+        return baseName;
+    }
+    
+    getAllEquivalentNamesExact(baseName) {
+        const searchKey = baseName.toUpperCase();
+        const equivalents = this.equivalenceMap.get(searchKey);
+        if (equivalents && equivalents.length > 0) {
+            return [...equivalents];
+        }
+        return [baseName];
+    }
+    
+    validateNameAgainstTable(colorName) {
+        const baseName = this.extractBaseName(colorName);
+        const searchKey = baseName.toUpperCase();
+        const expectedNames = this.equivalenceMap.get(searchKey);
+        
+        if (!expectedNames || expectedNames.length === 0) {
+            return { valid: true, message: null, suggestedName: null };
+        }
+        
+        const exactMatch = expectedNames.some(ename => ename === baseName);
+        
+        if (!exactMatch) {
+            const closestMatch = this.findClosestMatch(baseName, expectedNames);
+            return {
+                valid: false,
+                message: `⚠️ "${baseName}" no coincide exactamente con la tabla.`,
+                suggestedName: closestMatch,
+                expectedNames: expectedNames
+            };
+        }
+        
+        return { valid: true, message: null, suggestedName: null };
+    }
+    
+    findClosestMatch(name, candidates) {
+        let bestMatch = candidates[0];
+        let bestDistance = this.levenshteinDistance(name.toUpperCase(), bestMatch.toUpperCase());
+        
+        for (const candidate of candidates) {
+            const distance = this.levenshteinDistance(name.toUpperCase(), candidate.toUpperCase());
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestMatch = candidate;
+            }
+        }
+        return bestMatch;
+    }
+    
+    levenshteinDistance(a, b) {
+        const matrix = [];
+        for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+        for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+        
+        for (let i = 1; i <= b.length; i++) {
+            for (let j = 1; j <= a.length; j++) {
+                const cost = a[j - 1] === b[i - 1] ? 0 : 1;
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j - 1] + cost
+                );
+            }
+        }
+        return matrix[b.length][a.length];
+    }
+    
+    validateCmykFormat(cStr, colorName, channel) {
+        if (cStr.match(/\.{2,}/)) {
+            return {
+                valid: false,
+                error: `❌ ERROR FORMATO: "${colorName}" - ${channel}=${cStr} (tiene puntos de más)`
+            };
+        }
+        
+        if (!cStr.includes('.')) {
+            return {
+                valid: false,
+                error: `❌ ERROR FORMATO: "${colorName}" - ${channel}=${cStr} (no tiene punto decimal)`
+            };
+        }
+        
+        return { valid: true };
+    }
+    
+    showCorrectionModal(colorData, index, fileType, suggestedName, expectedNames) {
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 500px;">
+                <div class="modal-header" style="background: #b45309;">
+                    <h3 style="color: white;">✏️ Corregir nombre de color</h3>
+                    <button class="modal-close" style="color: white;">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Color actual:</strong> ${this.escapeHtml(colorData.name)}</p>
+                    <p><strong>NK:</strong> ${colorData.nk || 'Desconocido'}</p>
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <label>Nombre sugerido:</label>
+                        <input type="text" id="suggestedName" class="suggested-name-input" value="${this.escapeHtml(suggestedName)}" style="width:100%; padding:0.5rem; background:#1e1e2c; border:1px solid #4b5563; border-radius:0.4rem; color:white; margin-top:0.25rem;">
+                    </div>
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <label>Nombres válidos según tabla:</label>
+                        <select id="expectedNamesSelect" style="width:100%; padding:0.5rem; background:#1e1e2c; border:1px solid #4b5563; border-radius:0.4rem; color:white; margin-top:0.25rem;">
+                            ${expectedNames.map(n => `<option value="${this.escapeHtml(n)}">${this.escapeHtml(n)}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <label for="correctionReason">Motivo de la corrección (obligatorio):</label>
+                        <textarea id="correctionReason" rows="3" placeholder="Ej: El color tenía un error de tipeo, faltaba TM, etc..." style="width:100%; padding:0.5rem; background:#1e1e2c; border:1px solid #4b5563; border-radius:0.4rem; color:white;"></textarea>
+                    </div>
+                    <p style="color: #fbbf24; font-size: 0.75rem; margin-top: 0.5rem;">⚠️ El motivo es obligatorio para corregir el nombre.</p>
+                </div>
+                <div class="modal-buttons">
+                    <button class="btn btn-secondary cancel-correction">Omitir</button>
+                    <button class="btn btn-primary apply-correction">✅ Aplicar corrección</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        setTimeout(() => modal.classList.add('active'), 10);
+        
+        const closeModal = () => {
+            modal.classList.remove('active');
+            setTimeout(() => modal.remove(), 300);
+        };
+        
+        const suggestedInput = modal.querySelector('#suggestedName');
+        const expectedSelect = modal.querySelector('#expectedNamesSelect');
+        const reasonTextarea = modal.querySelector('#correctionReason');
+        
+        expectedSelect.addEventListener('change', (e) => {
+            suggestedInput.value = e.target.value;
+        });
+        
+        modal.querySelector('.modal-close').onclick = closeModal;
+        modal.querySelector('.cancel-correction').onclick = closeModal;
+        
+        modal.querySelector('.apply-correction').onclick = () => {
+            const newName = suggestedInput.value.trim();
+            const reason = reasonTextarea.value.trim();
+            
+            if (!reason) {
+                alert('⚠️ Debe ingresar un motivo para corregir el nombre.');
+                return;
+            }
+            
+            if (!newName) {
+                alert('⚠️ Debe ingresar un nombre válido.');
+                return;
+            }
+            
+            const nk = this.extractNK(colorData.name);
+            const newFullName = nk ? `${newName} ${nk}` : newName;
+            
+            if (fileType === 'primary') {
+                this.primaryData[index].name = newFullName;
+            } else {
+                this.secondaryData[index].name = newFullName;
+            }
+            
+            this.addCorrectionHistory(colorData.name, newFullName, reason);
+            this.saveToLocalStorage();
+            this.renderDataList(fileType, fileType === 'primary' ? this.primaryData : this.secondaryData);
+            
+            alert(`✅ Nombre corregido de:\n"${colorData.name}"\na:\n"${newFullName}"\nMotivo: ${reason}`);
+            closeModal();
+            this.processNextCorrection();
+        };
+        
+        modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+    }
+    
+    addCorrectionHistory(oldName, newName, reason) {
+        const history = localStorage.getItem('nameCorrectionHistory');
+        let corrections = [];
+        if (history) {
+            try {
+                corrections = JSON.parse(history);
+            } catch(e) {}
+        }
+        corrections.unshift({
+            id: Date.now(),
+            oldName: oldName,
+            newName: newName,
+            reason: reason,
+            user: this.currentUser,
+            date: new Date().toISOString()
+        });
+        if (corrections.length > 100) corrections = corrections.slice(0, 100);
+        localStorage.setItem('nameCorrectionHistory', JSON.stringify(corrections));
+    }
+    
+    processNextCorrection() {
+        if (this.pendingCorrections.length > 0) {
+            const next = this.pendingCorrections.shift();
+            this.showCorrectionModal(next.colorData, next.index, next.fileType, next.suggestedName, next.expectedNames);
+        }
+    }
+    
+    parseTxtContent(content, fileType = 'primary') {
+        const lines = content.split(/\r?\n/);
+        let dataStarted = false;
+        const records = [];
+        const nameErrors = [];
+        const formatErrors = [];
+        const correctionsNeeded = [];
+        
+        for (let line of lines) {
+            if (line.trim() === '') continue;
+            if (line.trim() === 'BEGIN_DATA') { dataStarted = true; continue; }
+            if (dataStarted && line.trim() === 'END_DATA') break;
+            if (!dataStarted) continue;
+            
+            const match = line.match(/^(\d+)\.?\s+(?:"([^"]+)"|([^\s]+))\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)/);
+            if (match) {
+                let rawName = match[2] || match[3];
+                if (rawName) {
+                    const normalizedName = this.normalizeSpaces(rawName);
+                    const nk = this.extractNK(normalizedName);
+                    const baseName = this.extractBaseName(normalizedName);
+                    
+                    const nameValidation = this.validateNameAgainstTable(normalizedName);
+                    if (!nameValidation.valid) {
+                        correctionsNeeded.push({
+                            colorData: {
+                                name: normalizedName,
+                                nk: nk,
+                                baseName: baseName,
+                                cmyk: [parseFloat(match[4]), parseFloat(match[5]), parseFloat(match[6]), parseFloat(match[7])],
+                                lab: [parseFloat(match[8]), parseFloat(match[9]), parseFloat(match[10])],
+                                id: match[1]
+                            },
+                            index: records.length,
+                            fileType: fileType,
+                            suggestedName: nameValidation.suggestedName,
+                            expectedNames: nameValidation.expectedNames,
+                            originalLine: line
+                        });
+                        nameErrors.push(nameValidation.message);
+                    }
+                    
+                    const cStr = match[4];
+                    const mStr = match[5];
+                    const yStr = match[6];
+                    const kStr = match[7];
+                    
+                    const cValidation = this.validateCmykFormat(cStr, normalizedName, 'C');
+                    const mValidation = this.validateCmykFormat(mStr, normalizedName, 'M');
+                    const yValidation = this.validateCmykFormat(yStr, normalizedName, 'Y');
+                    const kValidation = this.validateCmykFormat(kStr, normalizedName, 'K');
+                    
+                    if (!cValidation.valid) formatErrors.push(cValidation.error);
+                    if (!mValidation.valid) formatErrors.push(mValidation.error);
+                    if (!yValidation.valid) formatErrors.push(yValidation.error);
+                    if (!kValidation.valid) formatErrors.push(kValidation.error);
+                    
+                    records.push({
+                        id: match[1],
+                        name: normalizedName,
+                        nk: nk,
+                        baseName: baseName,
+                        cmyk: [parseFloat(cStr), parseFloat(mStr), parseFloat(yStr), parseFloat(kStr)],
+                        lab: [parseFloat(match[8]), parseFloat(match[9]), parseFloat(match[10])]
+                    });
+                }
+            }
+        }
+        
+        if (formatErrors.length > 0) {
+            alert(`❌ ERRORES DE FORMATO CMYK:\n${formatErrors.join('\n')}\n\nCorrija estos errores y vuelva a cargar el archivo.`);
+            return { records: [], corrections: [] };
+        }
+        
+        if (nameErrors.length > 0) {
+            alert(`⚠️ Se encontraron ${nameErrors.length} colores con nombres que no coinciden con la tabla.\n\nSe abrirá un cuadro para corregir cada uno.`);
+        }
+        
+        return { records: records, corrections: correctionsNeeded };
+    }
+    
+    async loadPrimaryFile(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const content = e.target.result;
+            const result = this.parseTxtContent(content, 'primary');
+            
+            if (result.records.length === 0 && result.corrections.length === 0) {
+                this.updateFileInfo('primary', 'ERROR - No se cargaron datos', 0);
+                return;
+            }
+            
+            this.primaryData = result.records;
+            this.pendingCorrections = result.corrections;
+            
+            this.updateFileInfo('primary', file.name, this.primaryData.length);
+            this.renderDataList('primary', this.primaryData);
+            this.saveToLocalStorage();
+            
+            if (this.pendingCorrections.length > 0) {
+                alert(`📝 Hay ${this.pendingCorrections.length} colores que requieren corrección de nombre.\n\nSe procederá a corregirlos uno por uno.`);
+                this.processNextCorrection();
+            } else {
+                alert(`✅ Archivo principal cargado: ${this.primaryData.length} colores`);
+            }
+        };
+        reader.onerror = (e) => {
+            alert('❌ Error al leer el archivo.');
+        };
+        reader.readAsText(file);
+    }
+    
+    async loadSecondaryFile(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const content = e.target.result;
+            const result = this.parseTxtContent(content, 'secondary');
+            
+            if (result.records.length === 0 && result.corrections.length === 0) {
+                this.updateFileInfo('secondary', 'ERROR - No se cargaron datos', 0);
+                return;
+            }
+            
+            this.secondaryData = result.records;
+            this.pendingCorrections = result.corrections;
+            
+            this.updateFileInfo('secondary', file.name, this.secondaryData.length);
+            this.renderDataList('secondary', this.secondaryData);
+            this.saveToLocalStorage();
+            
+            if (this.pendingCorrections.length > 0) {
+                alert(`📝 Hay ${this.pendingCorrections.length} colores que requieren corrección de nombre.\n\nSe procederá a corregirlos uno por uno.`);
+                this.processNextCorrection();
+            } else {
+                alert(`✅ Archivo secundario cargado: ${this.secondaryData.length} colores`);
+            }
+        };
+        reader.onerror = (e) => {
+            alert('❌ Error al leer el archivo.');
+        };
+        reader.readAsText(file);
     }
     
     saveToLocalStorage() {
@@ -114,7 +701,6 @@ class AlphaColorMatch {
             manualGroupSelections: Array.from(this.manualGroupSelections)
         };
         localStorage.setItem('alphaColorMatchData', JSON.stringify(dataToSave));
-        console.log('💾 Datos guardados en localStorage');
     }
     
     loadFromLocalStorage() {
@@ -130,7 +716,6 @@ class AlphaColorMatch {
                 this.groupSelections = new Map(data.groupSelections || []);
                 this.manualGroupSelections = new Set(data.manualGroupSelections || []);
                 this.updateUIFromLoadedData();
-                console.log('📂 Datos cargados desde localStorage');
             } catch (e) {
                 console.error('Error al cargar datos:', e);
             }
@@ -139,7 +724,6 @@ class AlphaColorMatch {
     
     saveEquivalencyRowsToLocalStorage() {
         localStorage.setItem('alphaColorMatchEquivalencyRows', JSON.stringify(this.equivalencyRows));
-        console.log('💾 Tabla de equivalencias guardada en localStorage');
     }
     
     loadEquivalencyRowsFromLocalStorage() {
@@ -149,7 +733,6 @@ class AlphaColorMatch {
                 const rows = JSON.parse(savedRows);
                 if (rows && rows.length > 0) {
                     this.equivalencyRows = rows;
-                    console.log('📂 Tabla de equivalencias cargada desde localStorage');
                 }
             } catch (e) {
                 console.error('Error al cargar equivalencyRows:', e);
@@ -159,7 +742,6 @@ class AlphaColorMatch {
     
     saveLibraryTxtsToLocalStorage() {
         localStorage.setItem('alphaColorMatchLibrary', JSON.stringify(this.libraryTxts));
-        console.log('💾 Librería de TXTs guardada');
     }
     
     loadLibraryTxtsFromLocalStorage() {
@@ -167,9 +749,7 @@ class AlphaColorMatch {
         if (saved) {
             try {
                 this.libraryTxts = JSON.parse(saved);
-                console.log('📂 Librería de TXTs cargada:', this.libraryTxts.length, 'archivos');
             } catch(e) {
-                console.error(e);
                 this.libraryTxts = [];
             }
         }
@@ -193,8 +773,6 @@ class AlphaColorMatch {
             });
         }
         this.saveLibraryTxtsToLocalStorage();
-        console.log(`📚 TXT "${name}" agregado a librería del plotter ${plotter}`);
-        
         if (this.assignmentView) {
             this.assignmentView.updateTxtList();
         }
@@ -209,8 +787,6 @@ class AlphaColorMatch {
         if (index !== -1) {
             this.libraryTxts.splice(index, 1);
             this.saveLibraryTxtsToLocalStorage();
-            console.log(`📚 TXT "${name}" eliminado de librería del plotter ${plotter}`);
-            
             if (this.assignmentView) {
                 this.assignmentView.updateTxtList();
             }
@@ -219,13 +795,8 @@ class AlphaColorMatch {
         return false;
     }
     
-    // ============================================================
-    // BANDEJA DE ENTRADA (INBOX)
-    // ============================================================
-    
     saveInboxToLocalStorage() {
         localStorage.setItem('alphaColorMatchInbox', JSON.stringify(this.inboxItems));
-        console.log('💾 Bandeja de entrada guardada');
     }
     
     loadInboxFromLocalStorage() {
@@ -233,9 +804,7 @@ class AlphaColorMatch {
         if (saved) {
             try {
                 this.inboxItems = JSON.parse(saved);
-                console.log('📂 Bandeja de entrada cargada:', this.inboxItems.length, 'mensajes');
             } catch(e) {
-                console.error(e);
                 this.inboxItems = [];
             }
         }
@@ -255,7 +824,6 @@ class AlphaColorMatch {
         };
         this.inboxItems.unshift(newItem);
         this.saveInboxToLocalStorage();
-        console.log(`📬 Mensaje enviado a bandeja: "${filename}"`);
         return newItem;
     }
     
@@ -268,7 +836,6 @@ class AlphaColorMatch {
         if (item) {
             item.isRead = true;
             this.saveInboxToLocalStorage();
-            console.log(`✅ Mensaje ${id} marcado como leído`);
             return true;
         }
         return false;
@@ -279,7 +846,6 @@ class AlphaColorMatch {
         if (item) {
             item.isRead = false;
             this.saveInboxToLocalStorage();
-            console.log(`📩 Mensaje ${id} marcado como no leído`);
             return true;
         }
         return false;
@@ -290,23 +856,19 @@ class AlphaColorMatch {
         if (index !== -1) {
             this.inboxItems.splice(index, 1);
             this.saveInboxToLocalStorage();
-            console.log(`🗑️ Mensaje ${id} eliminado de la bandeja`);
             return true;
         }
         return false;
     }
     
-    // ============================================================
-    // CARGAR DESDE BANDEJA A SECUNDARIO
-    // ============================================================
-    
     loadSecondaryFromInbox(content, filename) {
         try {
-            this.secondaryData = this.parseTxtContent(content);
+            const result = this.parseTxtContent(content, 'secondary');
+            if (result.records.length === 0) return false;
+            this.secondaryData = result.records;
             this.updateFileInfo('secondary', filename, this.secondaryData.length);
             this.renderDataList('secondary', this.secondaryData);
             this.saveToLocalStorage();
-            console.log(`✅ Secundario cargado desde bandeja: ${filename} (${this.secondaryData.length} colores)`);
             return true;
         } catch (error) {
             console.error('Error al cargar desde bandeja:', error);
@@ -321,6 +883,7 @@ class AlphaColorMatch {
             localStorage.removeItem('developmentColors');
             localStorage.removeItem('alphaColorMatchLibrary');
             localStorage.removeItem('alphaColorMatchInbox');
+            localStorage.removeItem('alphaColorMatchGroupIds');
             this.primaryData = [];
             this.secondaryData = [];
             this.results = [];
@@ -330,6 +893,7 @@ class AlphaColorMatch {
             this.manualGroupSelections.clear();
             this.libraryTxts = [];
             this.inboxItems = [];
+            this.groupIds.clear();
             
             this.equivalencyRows = [
                 ["00A BLACK", "03S TM Black", "03T TM BLACK", "002 BLACK"],
@@ -386,8 +950,9 @@ class AlphaColorMatch {
                 ["4KB DARK TURQUOISE"],
                 ["87F BRIGHT CERAMIC", "87F TM BRIGHT CERAMIC"]
             ];
-            this.buildEquivalenceGroups();
-            this.nameToEquivalenceGroup = this.buildNameToEquivalenceMap();
+            this.equivalenceMap = this.buildEquivalenceMap();
+            this.groupOrder = this.buildGroupOrder();
+            this.ensureGroupIds();
             
             this.updateFileInfo('primary', 'Ningún archivo cargado', 0);
             this.updateFileInfo('secondary', 'Ningún archivo cargado', 0);
@@ -406,7 +971,6 @@ class AlphaColorMatch {
             }
             
             alert('✅ Caché limpiada correctamente');
-            console.log('🗑️ Caché limpiada');
         }
     }
     
@@ -415,12 +979,10 @@ class AlphaColorMatch {
             this.updateFileInfo('primary', 'Datos cargados desde caché', this.primaryData.length);
             this.renderDataList('primary', this.primaryData);
         }
-        
         if (this.secondaryData.length > 0) {
             this.updateFileInfo('secondary', 'Datos cargados desde caché', this.secondaryData.length);
             this.renderDataList('secondary', this.secondaryData);
         }
-        
         if (this.results.length > 0) {
             this.renderResults(this.results);
             this.validateExportReady();
@@ -444,92 +1006,26 @@ class AlphaColorMatch {
         }, 2500);
     }
     
-    // Normalización SOLO para búsqueda interna, no para modificar nombres
-    normalizeForSearch(name) {
-        if (!name) return '';
-        return name.toUpperCase().replace(/\s+/g, ' ').trim().replace(/\bTM\b/g, '');
-    }
-    
-    buildEquivalenceGroups() {
-        const groups = [];
-        const processed = new Set();
-        
-        for (const row of this.equivalencyRows) {
-            const validNames = row.filter(n => n && n.trim() !== '');
-            if (validNames.length === 0) continue;
-            
-            const group = new Set();
-            for (const name of validNames) {
-                group.add(name);
-            }
-            groups.push(group);
-            for (const name of validNames) {
-                processed.add(this.normalizeForSearch(name));
-            }
-        }
-        
-        // Agregar nombres huérfanos (que no están en ninguna fila)
-        for (const row of this.equivalencyRows) {
-            for (const name of row) {
-                if (!name || name.trim() === '') continue;
-                const norm = this.normalizeForSearch(name);
-                if (!processed.has(norm)) {
-                    const group = new Set();
-                    group.add(name);
-                    groups.push(group);
-                    processed.add(norm);
-                }
-            }
-        }
-        
-        return groups;
-    }
-    
-    buildNameToEquivalenceMap() {
-        const map = new Map();
-        for (const group of this.equivalenceGroups) {
-            const groupArray = Array.from(group);
-            for (const name of groupArray) {
-                map.set(this.normalizeForSearch(name), groupArray);
-            }
-        }
-        return map;
-    }
-    
-    getAllEquivalentNamesExact(originalName) {
-        // Buscar por nombre exacto primero
-        const searchKey = this.normalizeForSearch(originalName);
-        const group = this.nameToEquivalenceGroup.get(searchKey);
-        
-        if (group && group.length > 0) {
-            // Devolver TODOS los nombres EXACTOS del grupo
-            return group;
-        }
-        
-        // Si no está en ningún grupo, devolver solo el original
-        return [originalName];
-    }
-    
-    areEquivalent(name1, name2) {
-        const norm1 = this.normalizeForSearch(name1);
-        const norm2 = this.normalizeForSearch(name2);
-        if (norm1 === norm2) return true;
-        
-        const group1 = this.nameToEquivalenceGroup.get(norm1);
-        const group2 = this.nameToEquivalenceGroup.get(norm2);
-        
-        if (group1 && group2 && group1 === group2) return true;
-        return false;
-    }
-    
     init() {
+        if (this.auth.loadSession()) {
+            document.getElementById('loginView').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'flex';
+            this.updateUIForUser();
+        } else {
+            document.getElementById('loginView').style.display = 'flex';
+            document.getElementById('mainApp').style.display = 'none';
+        }
+        
         this.bindEvents();
         this.initCreatorView();
         this.initEPSView();
         this.initDevelopmentView();
         this.initHistoryView();
         this.initAssignmentView();
+        this.initAdminView();
+        this.initReportsView();
         this.initViews();
+        this.initLogin();
         
         const clearCacheBtn = document.getElementById('clearCacheBtn');
         if (clearCacheBtn) {
@@ -550,27 +1046,31 @@ class AlphaColorMatch {
             }
         }
         this.creatorView = new CreatorView(this, equivalencyMap);
-        console.log('✅ CreatorView inicializado');
     }
     
     initEPSView() {
         this.epsView = new EPSView(this);
-        console.log('✅ EPSView inicializado');
     }
     
     initDevelopmentView() {
         this.developmentView = new DevelopmentView(this);
-        console.log('✅ DevelopmentView inicializado');
     }
     
     initHistoryView() {
         this.historyView = new HistoryView(this);
-        console.log('✅ HistoryView (Bandeja) inicializado');
     }
     
     initAssignmentView() {
         this.assignmentView = new AssignmentView(this);
-        console.log('✅ AssignmentView inicializado');
+    }
+    
+    initAdminView() {
+        this.adminView = new AdminView(this, this.auth);
+    }
+    
+    initReportsView() {
+        this.reportsView = new ReportsView(this);
+        console.log('✅ ReportsView inicializado');
     }
     
     initViews() {
@@ -581,7 +1081,9 @@ class AlphaColorMatch {
             creator: document.getElementById('creatorView'),
             eps: document.getElementById('epsView'),
             development: document.getElementById('developmentView'),
-            assignment: document.getElementById('assignmentView')
+            assignment: document.getElementById('assignmentView'),
+            reports: document.getElementById('reportsView'),
+            admin: document.getElementById('adminView')
         };
         
         const switchView = (viewName) => {
@@ -613,12 +1115,19 @@ class AlphaColorMatch {
                 this.assignmentView.updateTxtList();
                 this.assignmentView.renderHistory();
             }
+            if (viewName === 'reports' && this.reportsView) {
+                this.reportsView.updateFilters();
+                this.reportsView.render();
+            }
+            if (viewName === 'admin' && this.adminView) {
+                this.adminView.render();
+            }
         };
         
         menuItems.forEach(item => {
             item.addEventListener('click', () => {
                 const viewName = item.dataset.view;
-                if (viewName) {
+                if (viewName && this.auth.hasPermission(viewName)) {
                     switchView(viewName);
                 }
             });
@@ -654,7 +1163,6 @@ class AlphaColorMatch {
     setGroupSelection(groupId, source) {
         this.groupSelections.set(groupId, source);
         this.manualGroupSelections.add(groupId);
-        console.log(`🎨 Grupo ${groupId}: usando valores ${source === 'primary' ? 'PRINCIPAL' : 'SECUNDARIO'} (manual)`);
         this.renderResults(this.results);
         this.validateExportReady();
         this.saveToLocalStorage();
@@ -676,7 +1184,6 @@ class AlphaColorMatch {
         for (const groupId of groups) {
             this.groupSelections.set(groupId, 'secondary');
         }
-        console.log(`🔄 Reemplazados ${groups.size} grupos NO modificados a valores SECUNDARIO`);
         this.renderResults(this.results);
         this.validateExportReady();
         this.saveToLocalStorage();
@@ -699,7 +1206,6 @@ class AlphaColorMatch {
         this.renderResults(this.results);
         this.validateExportReady();
         this.saveToLocalStorage();
-        console.log(`➕ Pendiente agregado: ${itemId}`);
     }
     
     togglePendingDelete(itemId) {
@@ -708,7 +1214,6 @@ class AlphaColorMatch {
         this.renderResults(this.results);
         this.validateExportReady();
         this.saveToLocalStorage();
-        console.log(`🗑️ Pendiente eliminado: ${itemId}`);
     }
     
     isPendingDecided(itemId) {
@@ -725,10 +1230,8 @@ class AlphaColorMatch {
         const isReady = pendingUndecided.length === 0;
         if (isReady) {
             exportBtn.disabled = false;
-            exportBtn.title = "Listo para exportar";
         } else {
             exportBtn.disabled = true;
-            exportBtn.title = `Faltan ${pendingUndecided.length} pendientes por decidir (Agregar/Eliminar)`;
         }
         const validationMsg = document.getElementById('validationMessage');
         if (validationMsg) {
@@ -748,12 +1251,11 @@ class AlphaColorMatch {
         if (words.length === 0) return null;
         
         const patterns = [
-            { name: 'NK_pattern', test: (str) => /^NK[-]?[A-Z0-9]+/i.test(str), minWords: 1, maxWords: 3 },
-            { name: 'numbers_only', test: (str) => /^[\d\-]{4,12}$/.test(str), minWords: 1, maxWords: 1 },
-            { name: 'alphanumeric', test: (str) => /^[A-Z]{1,4}[\d]{1,4}[A-Z]{0,2}$/i.test(str) || /^[\d]{1,4}[A-Z]{1,4}$/i.test(str), minWords: 1, maxWords: 1 },
-            { name: 'letter_number', test: (str) => /^[A-Z][\d]{3,6}[A-Z]{0,2}$/i.test(str), minWords: 1, maxWords: 1 },
-            { name: 'number_letter', test: (str) => /^[\d]{3,6}[A-Z]{1,4}$/i.test(str), minWords: 1, maxWords: 1 },
-            { name: 'specific_words', test: (str) => ['STANDARD', 'COLORS', 'GREY', 'WHITE', 'BLACK', 'BLUE', 'GOLD', 'SILVER'].includes(str.toUpperCase()), minWords: 1, maxWords: 1 }
+            { test: (str) => /^NK[-]?[A-Z0-9]+/i.test(str), minWords: 1, maxWords: 3 },
+            { test: (str) => /^[\d\-]{4,12}$/.test(str), minWords: 1, maxWords: 1 },
+            { test: (str) => /^[A-Z]{1,4}[\d]{1,4}[A-Z]{0,2}$/i.test(str) || /^[\d]{1,4}[A-Z]{1,4}$/i.test(str), minWords: 1, maxWords: 1 },
+            { test: (str) => /^[A-Z][\d]{3,6}[A-Z]{0,2}$/i.test(str), minWords: 1, maxWords: 1 },
+            { test: (str) => /^[\d]{3,6}[A-Z]{1,4}$/i.test(str), minWords: 1, maxWords: 1 }
         ];
         
         for (let wordCount = 1; wordCount <= 3; wordCount++) {
@@ -762,24 +1264,21 @@ class AlphaColorMatch {
             for (const pattern of patterns) {
                 if (wordCount >= pattern.minWords && wordCount <= pattern.maxWords) {
                     if (pattern.test(candidate)) {
-                        console.log(`🔍 NK detectado: "${candidate}" (patrón: ${pattern.name})`);
                         return candidate;
                     }
                 }
             }
         }
-        const lastWord = words[words.length - 1];
-        console.log(`⚠️ NK no detectado con patrones, usando última palabra: "${lastWord}"`);
-        return lastWord;
+        return words[words.length - 1];
     }
     
     extractBaseName(fullName) {
         if (!fullName) return '';
         const nk = this.extractNK(fullName);
-        if (!nk) return fullName.trim();
+        if (!nk) return this.normalizeSpaces(fullName);
         const nkPattern = new RegExp(`\\s+${nk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
         const base = fullName.replace(nkPattern, '').trim();
-        return base;
+        return this.normalizeSpaces(base);
     }
     
     getEffectiveCmyk(groupId, primaryColor, secondaryColor) {
@@ -798,74 +1297,6 @@ class AlphaColorMatch {
         } else {
             return secondaryColor ? [...secondaryColor.lab] : null;
         }
-    }
-    
-    parseTxtContent(content) {
-        const lines = content.split(/\r?\n/);
-        let dataStarted = false;
-        const records = [];
-        
-        for (let line of lines) {
-            if (line.trim() === '') continue;
-            if (line.trim() === 'BEGIN_DATA') { dataStarted = true; continue; }
-            if (dataStarted && line.trim() === 'END_DATA') break;
-            if (!dataStarted) continue;
-            
-            const match = line.match(/^(\d+)\.?\s+(?:"([^"]+)"|([^\s]+))\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)\s+([\d\.\-]+)/);
-            if (match) {
-                let name = match[2] || match[3];
-                if (name) {
-                    records.push({
-                        id: match[1],
-                        name: name.trim(),
-                        cmyk: [parseFloat(match[4]), parseFloat(match[5]), parseFloat(match[6]), parseFloat(match[7])],
-                        lab: [parseFloat(match[8]), parseFloat(match[9]), parseFloat(match[10])]
-                    });
-                }
-            }
-        }
-        console.log(`📄 Parseados ${records.length} registros`);
-        return records;
-    }
-    
-    async loadPrimaryFile(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const content = e.target.result;
-            this.primaryData = this.parseTxtContent(content);
-            this.updateFileInfo('primary', file.name, this.primaryData.length);
-            this.renderDataList('primary', this.primaryData);
-            this.saveToLocalStorage();
-            console.log(`✅ Principal: ${this.primaryData.length} colores`);
-            alert(`✅ Archivo principal cargado: ${this.primaryData.length} colores`);
-        };
-        reader.onerror = (e) => {
-            console.error('Error al leer archivo:', e);
-            alert('❌ Error al leer el archivo. Verifica que sea un TXT válido.');
-        };
-        reader.readAsText(file);
-    }
-    
-    async loadSecondaryFile(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const content = e.target.result;
-            this.secondaryData = this.parseTxtContent(content);
-            this.updateFileInfo('secondary', file.name, this.secondaryData.length);
-            this.renderDataList('secondary', this.secondaryData);
-            this.saveToLocalStorage();
-            console.log(`✅ Secundario: ${this.secondaryData.length} colores`);
-            alert(`✅ Archivo secundario cargado: ${this.secondaryData.length} colores`);
-        };
-        reader.onerror = (e) => {
-            console.error('Error al leer archivo:', e);
-            alert('❌ Error al leer el archivo. Verifica que sea un TXT válido.');
-        };
-        reader.readAsText(file);
     }
     
     updateFileInfo(type, filename, count) {
@@ -905,7 +1336,6 @@ class AlphaColorMatch {
         this.deletedPending.clear();
         this.groupSelections.clear();
         this.manualGroupSelections.clear();
-        console.log('🔍 Comparando archivos...');
         this.findMatches();
         this.saveToLocalStorage();
         
@@ -961,26 +1391,27 @@ class AlphaColorMatch {
             const groups = new Map();
             
             for (const pc of primaryColors) {
-                const equivalentGroup = this.nameToEquivalenceGroup.get(this.normalizeForSearch(pc.baseName));
-                const groupIdKey = equivalentGroup ? equivalentGroup.sort().join('|') : pc.baseName;
-                if (!groups.has(groupIdKey)) {
-                    groups.set(groupIdKey, { primarios: [], secundarios: [], equivalentGroup: equivalentGroup });
+                const equivalentGroup = this.getAllEquivalentNamesExact(pc.baseName);
+                const groupKey = equivalentGroup[0];
+                if (!groups.has(groupKey)) {
+                    groups.set(groupKey, { primarios: [], secundarios: [], equivalentGroup: equivalentGroup, groupKey: groupKey });
                 }
-                groups.get(groupIdKey).primarios.push(pc);
+                groups.get(groupKey).primarios.push(pc);
             }
             
             for (const sc of secondaryColors) {
-                const equivalentGroup = this.nameToEquivalenceGroup.get(this.normalizeForSearch(sc.baseName));
-                const groupIdKey = equivalentGroup ? equivalentGroup.sort().join('|') : sc.baseName;
-                if (!groups.has(groupIdKey)) {
-                    groups.set(groupIdKey, { primarios: [], secundarios: [], equivalentGroup: equivalentGroup });
+                const equivalentGroup = this.getAllEquivalentNamesExact(sc.baseName);
+                const groupKey = equivalentGroup[0];
+                if (!groups.has(groupKey)) {
+                    groups.set(groupKey, { primarios: [], secundarios: [], equivalentGroup: equivalentGroup, groupKey: groupKey });
                 }
-                groups.get(groupIdKey).secundarios.push(sc);
+                groups.get(groupKey).secundarios.push(sc);
             }
             
-            for (const [groupIdKey, group] of groups) {
+            for (const [groupKey, group] of groups) {
                 const { primarios, secundarios, equivalentGroup } = group;
                 const actualGroupId = `group_${nk}_${groupCounter++}`;
+                const groupDisplayId = this.getGroupId(groupKey);
                 
                 if (primarios.length > 0 && secundarios.length > 0) {
                     for (const primary of primarios) {
@@ -990,6 +1421,8 @@ class AlphaColorMatch {
                             results.push({
                                 id: `primary_${primary.id}`,
                                 groupId: actualGroupId,
+                                groupDisplayId: groupDisplayId,
+                                groupKey: groupKey,
                                 nk: nk,
                                 primaryData: { id: primary.id, baseName: primary.baseName, fullName: primary.fullName, colorData: primary.colorData },
                                 secondaryData: { id: secondary.id, baseName: secondary.baseName, fullName: secondary.fullName, colorData: secondary.colorData },
@@ -1008,6 +1441,8 @@ class AlphaColorMatch {
                             results.push({
                                 id: `pending_primary_${primary.id}`,
                                 groupId: null,
+                                groupDisplayId: groupDisplayId,
+                                groupKey: groupKey,
                                 nk: nk,
                                 primaryData: { id: primary.id, baseName: primary.baseName, fullName: primary.fullName, colorData: primary.colorData },
                                 secondaryData: null,
@@ -1025,6 +1460,8 @@ class AlphaColorMatch {
                             results.push({
                                 id: `pending_secondary_${secondary.id}`,
                                 groupId: null,
+                                groupDisplayId: groupDisplayId,
+                                groupKey: groupKey,
                                 nk: nk,
                                 primaryData: null,
                                 secondaryData: { id: secondary.id, baseName: secondary.baseName, fullName: secondary.fullName, colorData: secondary.colorData },
@@ -1041,6 +1478,8 @@ class AlphaColorMatch {
         }
         
         results.sort((a, b) => {
+            const groupCompare = (a.groupKey || '').localeCompare(b.groupKey || '');
+            if (groupCompare !== 0) return groupCompare;
             const nkCompare = a.nk.localeCompare(b.nk);
             if (nkCompare !== 0) return nkCompare;
             const nameA = a.primaryData?.fullName || a.secondaryData?.fullName || '';
@@ -1051,7 +1490,6 @@ class AlphaColorMatch {
         this.results = results;
         this.renderResults(results);
         this.validateExportReady();
-        console.log(`📊 RESULTADOS: ${results.length}`);
     }
     
     renderResults(results) {
@@ -1084,6 +1522,8 @@ class AlphaColorMatch {
             let actionButton = '';
             let selectionButtons = '';
             let cmykPreview = '';
+            
+            const groupBadge = item.groupDisplayId ? `<span style="display:inline-block; background:rgba(0,229,255,0.2); color:#00e5ff; padding:0.1rem 0.4rem; border-radius:0.25rem; font-size:0.6rem; margin-right:0.5rem;">${item.groupDisplayId}</span>` : '';
             
             if (item.matchType === 'exact' || item.matchType === 'equivalent') {
                 rowClass = item.matchType === 'exact' ? 'style="background: rgba(21, 128, 61, 0.1);"' : 'style="background: rgba(180, 83, 9, 0.1);"';
@@ -1138,7 +1578,7 @@ class AlphaColorMatch {
             
             return `
                 <tr ${rowClass}>
-                    <td><strong>${item.nk}</strong>${cmykPreview}</td>
+                    <td>${groupBadge}<strong>${item.nk}</strong>${cmykPreview}</td>
                     <td>${primaryName}<br>${primaryCmyk ? `<span class="cmyk-small">C:${primaryCmyk[0].toFixed(1)} M:${primaryCmyk[1].toFixed(1)} Y:${primaryCmyk[2].toFixed(1)} K:${primaryCmyk[3].toFixed(1)}</span>` : ''}</td>
                     <td>${secondaryName}<br>${secondaryCmyk ? `<span class="cmyk-small">C:${secondaryCmyk[0].toFixed(1)} M:${secondaryCmyk[1].toFixed(1)} Y:${secondaryCmyk[2].toFixed(1)} K:${secondaryCmyk[3].toFixed(1)}</span>` : ''}</td>
                     <td><span class="${statusClass}">${statusText}</span></td>
@@ -1148,36 +1588,48 @@ class AlphaColorMatch {
         }).join('');
     }
     
-    // ============================================================
-    // NUEVO MÉTODO: Expande con TODOS los equivalentes EXACTOS de la tabla
-    // Los colores se agrupan por NK para que queden JUNTOS
-    // ============================================================
     expandWithAllEquivalentsByNK(exportItems) {
-        // Agrupar por NK primero
-        const itemsByNK = new Map();
+        const itemsByGroup = new Map();
         
         for (const item of exportItems) {
             const nk = this.extractNK(item.name);
             if (!nk) continue;
             
-            if (!itemsByNK.has(nk)) {
-                itemsByNK.set(nk, []);
+            const baseName = this.extractBaseName(item.name);
+            const groupKey = this.getGroupKeyForColor(baseName);
+            
+            if (!itemsByGroup.has(groupKey)) {
+                itemsByGroup.set(groupKey, []);
             }
-            itemsByNK.get(nk).push(item);
+            itemsByGroup.get(groupKey).push({ item, nk, baseName });
         }
         
         const expandedItems = [];
         const processedKeys = new Set();
         
-        // Procesar cada NK por separado para mantener agrupación
-        for (const [nk, items] of itemsByNK) {
-            for (const item of items) {
-                const baseName = this.extractBaseName(item.name);
-                // Obtener TODOS los nombres equivalentes EXACTOS de la tabla
+        const groupOrderList = [];
+        for (const group of this.groupOrder) {
+            if (group.length > 0) {
+                groupOrderList.push(group[0]);
+            }
+        }
+        
+        const sortedGroups = Array.from(itemsByGroup.keys()).sort((a, b) => {
+            const indexA = groupOrderList.indexOf(a);
+            const indexB = groupOrderList.indexOf(b);
+            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+            if (indexA !== -1) return -1;
+            if (indexB !== -1) return 1;
+            return a.localeCompare(b);
+        });
+        
+        for (const groupKey of sortedGroups) {
+            const groupItems = itemsByGroup.get(groupKey);
+            
+            for (const { item, nk, baseName } of groupItems) {
                 const equivalentNames = this.getAllEquivalentNamesExact(baseName);
                 
                 for (const eqName of equivalentNames) {
-                    // Construir el nombre completo con NK
                     const eqFullName = `${eqName} ${nk}`;
                     const key = `${eqFullName}|${item.cmyk.join(',')}`;
                     
@@ -1188,6 +1640,7 @@ class AlphaColorMatch {
                             cmyk: [...item.cmyk],
                             lab: [...item.lab],
                             nk: nk,
+                            groupKey: groupKey,
                             originalName: item.name,
                             isEquivalent: eqName !== baseName
                         });
@@ -1196,21 +1649,16 @@ class AlphaColorMatch {
             }
         }
         
-        // Ordenar por NK primero, luego por nombre
-        expandedItems.sort((a, b) => {
-            const nkCompare = a.nk.localeCompare(b.nk);
-            if (nkCompare !== 0) return nkCompare;
-            return a.name.localeCompare(b.name);
-        });
-        
-        console.log(`✨ Expansión de equivalentes: ${exportItems.length} originales → ${expandedItems.length} totales (agrupados por NK)`);
         return expandedItems;
     }
     
     buildExportItems() {
         const exportItems = [];
         const processedGroups = new Set();
+        
         const sortedResults = [...this.results].sort((a, b) => {
+            const groupCompare = (a.groupKey || '').localeCompare(b.groupKey || '');
+            if (groupCompare !== 0) return groupCompare;
             const nkCompare = a.nk.localeCompare(b.nk);
             if (nkCompare !== 0) return nkCompare;
             const nameA = a.primaryData?.fullName || a.secondaryData?.fullName || '';
@@ -1218,7 +1666,6 @@ class AlphaColorMatch {
             return nameA.localeCompare(nameB);
         });
         
-        // Primero, obtener los items base de la comparación
         for (const item of sortedResults) {
             if (item.matchType === 'exact' || item.matchType === 'equivalent') {
                 if (processedGroups.has(item.groupId)) continue;
@@ -1231,11 +1678,11 @@ class AlphaColorMatch {
                         cmyk: cmyk, 
                         lab: lab, 
                         type: item.matchType,
-                        nk: item.nk
+                        nk: item.nk,
+                        baseName: item.primaryData.baseName
                     });
                 }
                 if (item.matchType === 'equivalent' && item.secondaryData) {
-                    // Evitar duplicados
                     const secondaryName = item.secondaryData.fullName || item.secondaryData.colorData.name;
                     const alreadyExists = exportItems.some(e => e.name === secondaryName && e.nk === item.nk);
                     if (!alreadyExists) {
@@ -1244,14 +1691,14 @@ class AlphaColorMatch {
                             cmyk: cmyk, 
                             lab: lab, 
                             type: item.matchType,
-                            nk: item.nk
+                            nk: item.nk,
+                            baseName: item.secondaryData.baseName
                         });
                     }
                 }
             }
         }
         
-        // Agregar los pendientes que fueron marcados como "Agregar"
         for (const item of this.results) {
             if (this.selectedPending.has(item.id)) {
                 if (item.primaryData) {
@@ -1260,7 +1707,8 @@ class AlphaColorMatch {
                         cmyk: [...item.primaryData.colorData.cmyk], 
                         lab: [...item.primaryData.colorData.lab], 
                         type: 'added',
-                        nk: item.nk
+                        nk: item.nk,
+                        baseName: item.primaryData.baseName
                     });
                 } else if (item.secondaryData) {
                     exportItems.push({ 
@@ -1268,13 +1716,13 @@ class AlphaColorMatch {
                         cmyk: [...item.secondaryData.colorData.cmyk], 
                         lab: [...item.secondaryData.colorData.lab], 
                         type: 'added',
-                        nk: item.nk
+                        nk: item.nk,
+                        baseName: item.secondaryData.baseName
                     });
                 }
             }
         }
         
-        // Eliminar duplicados exactos por nombre
         const uniqueExportItems = [];
         const seenNames = new Set();
         for (const item of exportItems) {
@@ -1285,9 +1733,7 @@ class AlphaColorMatch {
             }
         }
         
-        // Expandir con TODOS los complementarios de la tabla (agrupados por NK)
         const expandedItems = this.expandWithAllEquivalentsByNK(uniqueExportItems);
-        
         return expandedItems;
     }
     
@@ -1297,7 +1743,6 @@ class AlphaColorMatch {
         let content = 'CGATS.17\nORIGINATOR\t"ALPHA COLOR MATCH"\nFILE_DESCRIPTOR\t""\n';
         content += `CREATED\t"${dateStr}"\nNUMBER_OF_FIELDS\t9\nBEGIN_DATA_FORMAT\nSAMPLE_ID SAMPLE_NAME CMYK_C CMYK_M CMYK_Y CMYK_K LAB_L LAB_A LAB_B\nEND_DATA_FORMAT\nNUMBER_OF_SETS\t${exportItems.length}\nBEGIN_DATA\n\n`;
         
-        // Eliminar duplicados finales por nombre exacto
         const finalUnique = new Map();
         for (const item of exportItems) {
             if (!finalUnique.has(item.name)) {
@@ -1317,27 +1762,12 @@ class AlphaColorMatch {
     showPreviewAndExport() {
         let exportItems = this.buildExportItems();
         if (exportItems.length === 0) {
-            alert('No hay datos para exportar. Asegúrate de haber comparado y seleccionado pendientes.');
+            alert('No hay datos para exportar.');
             return;
         }
         
-        // Contar estadísticas
         const originalCount = exportItems.filter(i => !i.isEquivalent).length;
         const equivalentCount = exportItems.filter(i => i.isEquivalent).length;
-        
-        // Agrupar por NK para mostrar estadísticas
-        const nkGroups = new Map();
-        for (const item of exportItems) {
-            if (!nkGroups.has(item.nk)) {
-                nkGroups.set(item.nk, []);
-            }
-            nkGroups.get(item.nk).push(item);
-        }
-        
-        let nkStats = '';
-        for (const [nk, items] of nkGroups) {
-            nkStats += `<br><small style="margin-left: 1rem;">📌 NK ${nk}: ${items.length} colores (${items.filter(i => !i.isEquivalent).length} original + ${items.filter(i => i.isEquivalent).length} complementarios)</small>`;
-        }
         
         const content = this.generateCGATSContent(exportItems);
         
@@ -1346,24 +1776,23 @@ class AlphaColorMatch {
         modal.innerHTML = `
             <div class="modal-content" style="max-width: 900px; max-height: 85vh;">
                 <div class="modal-header" style="background: #2d4ed6;">
-                    <h3 style="color: white;">📄 Vista previa de exportación (CGATS.17)</h3>
+                    <h3 style="color: white;">📄 Vista previa de exportación</h3>
                     <button class="modal-close" style="color: white;">&times;</button>
                 </div>
                 <div class="modal-body" style="overflow: auto; max-height: 65vh;">
                     <div style="margin-bottom: 1rem; padding: 0.75rem; background: #1e1e2c; border-radius: 0.5rem;">
-                        <strong>📊 Resumen:</strong> ${exportItems.length} registros a exportar
-                        <br><small>🎨 Colores originales: ${originalCount}</small>
-                        <br><small style="color: #00e5ff;">✨ Complementarios agregados (tabla de equivalencias): ${equivalentCount}</small>
-                        ${nkStats}
-                        <br><small style="color: #eab308;">💡 Los colores están agrupados por NK y ordenados dentro de cada grupo</small>
+                        <strong>📊 Resumen:</strong> ${exportItems.length} registros
+                        <br><small>🎨 Originales: ${originalCount}</small>
+                        <br><small style="color: #00e5ff;">✨ Complementarios: ${equivalentCount}</small>
+                        <br><small style="color: #4ade80;">✅ Colores agrupados por familia</small>
                     </div>
                     <div style="font-family: monospace; font-size: 0.7rem; background: #0a0a0a; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; white-space: pre-wrap; max-height: 400px; overflow-y: auto;">
-                        <pre style="margin: 0; color: #e2e8f0;">${content.substring(0, 5000)}${content.length > 5000 ? '\n... (contenido truncado en vista previa)' : ''}</pre>
+                        <pre style="margin: 0; color: #e2e8f0;">${content.substring(0, 5000)}${content.length > 5000 ? '\n...' : ''}</pre>
                     </div>
                 </div>
-                <div class="modal-buttons" style="padding: 1rem; border-top: 1px solid #2d3748; display: flex; gap: 1rem; justify-content: flex-end;">
+                <div class="modal-buttons">
                     <button class="btn btn-secondary cancel-preview">Cancelar</button>
-                    <button class="btn btn-primary confirm-export">✅ Confirmar y Exportar</button>
+                    <button class="btn btn-primary confirm-export">✅ Exportar</button>
                 </div>
             </div>
         `;
@@ -1385,10 +1814,8 @@ class AlphaColorMatch {
     }
     
     doExport(exportItems) {
-        // Asegurar que los complementarios están incluidos y agrupados por NK
         const expandedItems = this.expandWithAllEquivalentsByNK(exportItems);
         
-        // Eliminar duplicados finales
         const uniqueItems = [];
         const seenNames = new Set();
         for (const item of expandedItems) {
@@ -1415,8 +1842,12 @@ class AlphaColorMatch {
         a.click();
         URL.revokeObjectURL(url);
         
-        const complementariosCount = uniqueItems.filter(i => i.isEquivalent).length;
-        alert(`✅ Archivo exportado con ${uniqueItems.length} registros (${complementariosCount} complementarios agregados automáticamente)\nLos colores están agrupados por NK.`);
+        alert(`✅ Exportado: ${uniqueItems.length} colores\n✅ Familias agrupadas`);
+    }
+    
+    escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 }
 
