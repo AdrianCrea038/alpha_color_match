@@ -1753,7 +1753,8 @@ class AlphaColorMatch {
         
         finalItems.forEach((item, index) => {
             const counter = index + 1;
-            content += `${counter}. "${item.name}" ${item.cmyk[0].toFixed(6)} ${item.cmyk[1].toFixed(6)} ${item.cmyk[2].toFixed(6)} ${item.cmyk[3].toFixed(6)} ${item.lab[0].toFixed(6)} ${item.lab[1].toFixed(6)} ${item.lab[2].toFixed(6)}\n`;
+            // CORREGIDO: sin punto después del número correlativo
+            content += `${counter} "${item.name}" ${item.cmyk[0].toFixed(6)} ${item.cmyk[1].toFixed(6)} ${item.cmyk[2].toFixed(6)} ${item.cmyk[3].toFixed(6)} ${item.lab[0].toFixed(6)} ${item.lab[1].toFixed(6)} ${item.lab[2].toFixed(6)}\n`;
         });
         content += '\nEND_DATA\n';
         return content;

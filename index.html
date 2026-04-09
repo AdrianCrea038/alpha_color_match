@@ -217,7 +217,7 @@
                                 <th style="width:100px">b*</th><th style="width:100px">Estado</th><th style="width:80px">Acción</th>
                             </thead>
                             <tbody id="creatorTableBody">
-                                <tr><td colspan="12" class="empty-state">Seleccione un archivo TXT de la lista para comenzar<\/td><\/tr>
+                                <td><td colspan="12" class="empty-state">Seleccione un archivo TXT de la lista para comenzar<\/td><\/tr>
                             </tbody>
                         </table>
                     </div>
@@ -269,6 +269,28 @@
                             <p>Asigne paletas de colores a usuarios y plotters específicos</p>
                         </div>
 
+                        <!-- Sección Cargar TXT a Librería (ARRIBA, sin plotter) -->
+                        <div class="assignment-upload-section">
+                            <div class="assignment-upload-header">
+                                <h4><i class="fas fa-upload"></i> Cargar TXT a Librería</h4>
+                                <p>Agregue archivos TXT a la librería para poder asignarlos (el plotter se asignará al momento de asignar el trabajo)</p>
+                            </div>
+                            <div class="assignment-upload-form">
+                                <div class="upload-form-group full-width">
+                                    <label><i class="fas fa-file-alt"></i> Archivo TXT:</label>
+                                    <input type="file" id="assignmentUploadFile" accept=".txt" class="assignment-file-input">
+                                </div>
+                                <div class="upload-form-group full-width">
+                                    <label><i class="fas fa-comment"></i> Motivo de carga:</label>
+                                    <textarea id="assignmentUploadReason" rows="2" placeholder="Ej: Nueva paleta para producción..." style="width:100%; padding:0.5rem; background:#1e1e2c; border:1px solid #4b5563; border-radius:0.4rem; color:white;"></textarea>
+                                </div>
+                                <div class="upload-form-actions">
+                                    <button id="assignmentUploadBtn" class="btn-primary">📤 CARGAR A LIBRERÍA</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Sección Asignar Trabajo (ABAJO, con plotter) -->
                         <div class="assignment-form">
                             <div class="form-group">
                                 <label><i class="fas fa-file-alt"></i> Seleccionar archivo TXT:</label>
@@ -294,7 +316,7 @@
                                     <option value="11">Plotter 11</option>
                                     <option value="12">Plotter 12</option>
                                     <option value="13">Plotter 13</option>
-                                    <option value="14">Plotter 14</option>
+                                    <option value="14" selected>Plotter 14</option>
                                     <option value="15">Plotter 15</option>
                                     <option value="16">Plotter 16</option>
                                     <option value="17">Plotter 17</option>
@@ -323,49 +345,6 @@
                                 <button id="assignWorkBtn" class="btn-primary">📤 ASIGNAR TRABAJO</button>
                                 <button id="clearAssignmentBtn" class="btn-secondary">🗑️ LIMPIAR FORMULARIO</button>
                                 <button id="clearAllAssignmentsBtn" class="btn-danger">🧹 LIMPIAR TODAS ASIGNACIONES</button>
-                            </div>
-                        </div>
-
-                        <!-- Sección Cargar TXT a Librería -->
-                        <div class="assignment-upload-section">
-                            <div class="assignment-upload-header">
-                                <h4><i class="fas fa-upload"></i> Cargar TXT a Librería</h4>
-                                <p>Agregue archivos TXT a la librería para poder asignarlos</p>
-                            </div>
-                            <div class="assignment-upload-form">
-                                <div class="upload-form-group">
-                                    <label><i class="fas fa-print"></i> Plotter:</label>
-                                    <select id="assignmentUploadPlotter" class="assignment-select">
-                                        <option value="1">Plotter 1</option>
-                                        <option value="2">Plotter 2</option>
-                                        <option value="3">Plotter 3</option>
-                                        <option value="4">Plotter 4</option>
-                                        <option value="5">Plotter 5</option>
-                                        <option value="6">Plotter 6</option>
-                                        <option value="7">Plotter 7</option>
-                                        <option value="8">Plotter 8</option>
-                                        <option value="9">Plotter 9</option>
-                                        <option value="10">Plotter 10</option>
-                                        <option value="11">Plotter 11</option>
-                                        <option value="12">Plotter 12</option>
-                                        <option value="13">Plotter 13</option>
-                                        <option value="14" selected>Plotter 14</option>
-                                        <option value="15">Plotter 15</option>
-                                        <option value="16">Plotter 16</option>
-                                        <option value="17">Plotter 17</option>
-                                    </select>
-                                </div>
-                                <div class="upload-form-group">
-                                    <label><i class="fas fa-file-alt"></i> Archivo TXT:</label>
-                                    <input type="file" id="assignmentUploadFile" accept=".txt" class="assignment-file-input">
-                                </div>
-                                <div class="upload-form-group">
-                                    <label><i class="fas fa-comment"></i> Motivo:</label>
-                                    <textarea id="assignmentUploadReason" rows="2" placeholder="Ej: Nueva paleta para producción..." style="width:100%; padding:0.5rem; background:#1e1e2c; border:1px solid #4b5563; border-radius:0.4rem; color:white;"></textarea>
-                                </div>
-                                <div class="upload-form-actions">
-                                    <button id="assignmentUploadBtn" class="btn-primary">📤 CARGAR A LIBRERÍA</button>
-                                </div>
                             </div>
                         </div>
 
@@ -457,7 +436,7 @@
                                         <tr><th>Fecha</th><th>Usuario</th><th>Plotter</th><th>Archivo</th><th>Progreso</th><th>Motivo</th>
                                     </thead>
                                     <tbody id="reportsTableBody">
-                                        <tr><td colspan="6" class="empty-state">No hay asignaciones registradas</td></tr>
+                                        <tr><td colspan="6" class="empty-state">No hay asignaciones registradas</td><\/tr>
                                     </tbody>
                                 </table>
                             </div>

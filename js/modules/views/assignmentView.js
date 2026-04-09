@@ -19,7 +19,6 @@ export class AssignmentView {
         this.historyList = null;
         
         // Elementos de carga TXT
-        this.uploadPlotterSelect = null;
         this.uploadFileInput = null;
         this.uploadReasonTextarea = null;
         this.uploadBtn = null;
@@ -42,8 +41,7 @@ export class AssignmentView {
         this.clearAllBtn = this.container.querySelector('#clearAllAssignmentsBtn');
         this.historyList = this.container.querySelector('#assignmentHistoryList');
         
-        // Elementos de carga TXT
-        this.uploadPlotterSelect = this.container.querySelector('#assignmentUploadPlotter');
+        // Elementos de carga TXT (sin plotter)
         this.uploadFileInput = this.container.querySelector('#assignmentUploadFile');
         this.uploadReasonTextarea = this.container.querySelector('#assignmentUploadReason');
         this.uploadBtn = this.container.querySelector('#assignmentUploadBtn');
@@ -75,15 +73,14 @@ export class AssignmentView {
     }
     
     // ============================================================
-    // CARGAR TXT A LIBRERÍA
+    // CARGAR TXT A LIBRERÍA (sin plotter)
     // ============================================================
     uploadTxtToLibrary() {
-        if (!this.uploadPlotterSelect || !this.uploadFileInput) {
+        if (!this.uploadFileInput) {
             alert('❌ Error: No se encontraron los elementos de carga.');
             return;
         }
         
-        const plotter = parseInt(this.uploadPlotterSelect.value);
         const file = this.uploadFileInput.files[0];
         const reason = this.uploadReasonTextarea ? this.uploadReasonTextarea.value.trim() : '';
         
@@ -102,14 +99,43 @@ export class AssignmentView {
             return;
         }
         
+        // Verificar si el archivo ya existe en la librería (por nombre)
+        const existingTxt = this.app.libraryTxts.find(t => t.name === file.name);
+        
+        if (existingTxt) {
+            const confirmOverwrite = confirm(`⚠️ El archivo "${file.name}" ya existe en la librería.\n\n¿Desea sobrescribirlo?\n\nFecha existente: ${new Date(existingTxt.uploadDate).toLocaleString()}\nPlotter: ${existingTxt.plotter}`);
+            if (!confirmOverwrite) {
+                this.uploadFileInput.value = '';
+                if (this.uploadReasonTextarea) this.uploadReasonTextarea.value = '';
+                return;
+            }
+        }
+        
         const reader = new FileReader();
         reader.onload = (e) => {
             const content = e.target.result;
             
             if (this.app) {
-                this.app.addTxtToLibrary(plotter, file.name, content);
-                this.addUploadHistory(file.name, plotter, reason);
-                alert(`✅ Archivo "${file.name}" cargado a librería del plotter ${plotter}.`);
+                // Si existe y confirmó sobrescritura, actualizar; si no, agregar nuevo
+                if (existingTxt) {
+                    // Actualizar el existente manteniendo el plotter original
+                    const index = this.app.libraryTxts.findIndex(t => t.name === file.name);
+                    if (index !== -1) {
+                        this.app.libraryTxts[index] = {
+                            ...this.app.libraryTxts[index],
+                            content: content,
+                            uploadDate: new Date().toISOString()
+                        };
+                        this.app.saveLibraryTxtsToLocalStorage();
+                        console.log(`📚 TXT "${file.name}" actualizado en librería`);
+                    }
+                } else {
+                    // Plotter se asignará al momento de asignar trabajo, por ahora usar 0 como temporal
+                    this.app.addTxtToLibrary(0, file.name, content);
+                }
+                
+                this.addUploadHistory(file.name, reason);
+                alert(`✅ Archivo "${file.name}" cargado a librería correctamente.`);
                 
                 // Limpiar campos
                 this.uploadFileInput.value = '';
@@ -130,7 +156,7 @@ export class AssignmentView {
         reader.readAsText(file);
     }
     
-    addUploadHistory(fileName, plotter, reason) {
+    addUploadHistory(fileName, reason) {
         const history = localStorage.getItem('txtUploadHistory');
         let uploads = [];
         if (history) {
@@ -141,7 +167,6 @@ export class AssignmentView {
         uploads.unshift({
             id: Date.now(),
             fileName: fileName,
-            plotter: plotter,
             reason: reason,
             user: this.app?.currentUser || 'usuario',
             date: new Date().toISOString()
@@ -203,9 +228,17 @@ export class AssignmentView {
             return;
         }
         
+        // Filtrar solo TXT que tienen plotter asignado (plotter > 0)
+        const validTxts = txts.filter(txt => txt.plotter > 0);
+        
+        if (validTxts.length === 0) {
+            this.txtSelect.innerHTML = '<option value="">-- No hay archivos TXT con plotter asignado --</option>';
+            return;
+        }
+        
         const groupedByPlotter = new Map();
         
-        for (const txt of txts) {
+        for (const txt of validTxts) {
             const plotter = txt.plotter;
             if (!groupedByPlotter.has(plotter)) {
                 groupedByPlotter.set(plotter, []);
@@ -306,7 +339,7 @@ export class AssignmentView {
         if (!this.txtSelect || !this.plotterSelect || !this.userSelect) return;
         
         const txtValue = this.txtSelect.value;
-        const plotter = this.plotterSelect.value;
+        const plotter = parseInt(this.plotterSelect.value);
         const user = this.userSelect.value;
         const comment = this.commentTextarea ? this.commentTextarea.value.trim() : '';
         
@@ -315,8 +348,8 @@ export class AssignmentView {
             return;
         }
         
-        if (!plotter) {
-            alert('⚠️ Debe seleccionar un plotter.');
+        if (!plotter || isNaN(plotter)) {
+            alert('⚠️ Debe seleccionar un plotter válido.');
             return;
         }
         
@@ -333,13 +366,60 @@ export class AssignmentView {
             return;
         }
         
+        // Validar si el archivo ya tiene asignado un plotter diferente
+        if (txtData.plotter !== plotter) {
+            const confirmChange = confirm(`⚠️ El archivo "${txtData.name}" está actualmente asignado al Plotter ${txtData.plotter}.\n\n¿Desea reasignarlo al Plotter ${plotter}?\n\nEsto actualizará el plotter del archivo en la librería.`);
+            if (!confirmChange) {
+                return;
+            }
+            
+            // Actualizar el plotter del archivo en la librería
+            const txtIndex = this.app.libraryTxts.findIndex(t => t.name === txtData.name);
+            if (txtIndex !== -1) {
+                this.app.libraryTxts[txtIndex].plotter = plotter;
+                this.app.saveLibraryTxtsToLocalStorage();
+                console.log(`📚 Plotter del archivo "${txtData.name}" actualizado a ${plotter}`);
+                
+                // Actualizar txtData para la asignación
+                txtData.plotter = plotter;
+            }
+        }
+        
+        // Validar si el usuario ya tiene una asignación pendiente con el mismo archivo
+        const existingAssignment = this.assignments.find(a => 
+            a.fileName === txtData.name && 
+            a.user === user && 
+            a.progressPercentage < 100
+        );
+        
+        if (existingAssignment) {
+            const confirmReassign = confirm(`⚠️ El usuario ya tiene una asignación pendiente del archivo "${txtData.name}" (${existingAssignment.progressPercentage}% completado).\n\n¿Desea crear una nueva asignación de todos modos?`);
+            if (!confirmReassign) {
+                return;
+            }
+        }
+        
+        // Validar si el archivo ya está asignado a otro usuario (con progreso < 100%)
+        const otherUserAssignment = this.assignments.find(a => 
+            a.fileName === txtData.name && 
+            a.user !== user && 
+            a.progressPercentage < 100
+        );
+        
+        if (otherUserAssignment) {
+            const confirmOther = confirm(`⚠️ El archivo "${txtData.name}" ya está asignado a ${otherUserAssignment.user} (${otherUserAssignment.progressPercentage}% completado).\n\n¿Desea asignarlo también a ${user}?`);
+            if (!confirmOther) {
+                return;
+            }
+        }
+        
         const progress = this.calculateProgress(txtData.content);
         
         const newAssignment = {
             id: Date.now(),
             timestamp: new Date().toISOString(),
             fileName: txtData.name,
-            plotter: parseInt(plotter),
+            plotter: plotter,
             user: user,
             comment: comment,
             content: txtData.content,
