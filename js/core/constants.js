@@ -18,7 +18,7 @@
         ["GLD8", "PMS 132 OLD GOLD", "PMS 1255C OLD GOLD"],
         ["YEL1", "79S YELLOW STRIKE", "79S TM Yellow Strike"],
         ["YEL2", "PMS 109C NEW YELLOW"],
-        ["YEL3", "78H AMARILLO"]
+        ["YEL3", "78H AMARILLO"],
         ["ORG1", "81F DESERT ORANGE", "81F TM DESERT ORANGE"],
         ["ORG2", "89L TEAM ORANGE", "82U TM ORANGE"],
         ["ORG3", "89M Uni Orange"],
