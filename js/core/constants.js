@@ -45,7 +45,7 @@
         ["PRP1", "56N FIELD PURPLE", "52V TM Purple"],
         ["PRP2", "52M NEW ORCHID"],
         ["PRP3", "55U URBAN LILAC"],
-        ["PNK1", "66Z PINK FIRE II", "6DR TM Pink Fire"],
+        ["PNK1", "66Z PINK FIRE II", "6DR TM Pink Fire", "66Z PINK FIRE"],
         ["BRN1", "2AQ TM Brown", "20Q DARK CINDER"],
         ["BRN2", "2DI SEAL BROWN"],
         ["BRN3", "33B OCHRE"],
