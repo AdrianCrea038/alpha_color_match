@@ -1,6 +1,6 @@
 // js/main.js
 import { Auth } from './core/auth.js';
-import { loadFile } from './modules/fileLoader.js';
+import { loadFile, parseTxtContent } from './modules/fileLoader.js';
 import { validateAndCorrectRecords } from './modules/nameValidator.js';
 import { compareFiles } from './modules/comparator.js';
 import { renderResults } from './modules/resultsRenderer.js';
@@ -15,6 +15,8 @@ import { HistoryView } from './views/historyView.js';
 import { AssignmentView } from './views/assignmentView.js';
 import { AdminView } from './views/adminView.js';
 import { ReportsView } from './views/reportsView.js';
+import { DashboardView } from './views/dashboardView.js';
+import { supabase } from './core/supabaseClient.js';
 
 class AlphaColorMatch {
     constructor() {
@@ -22,11 +24,14 @@ class AlphaColorMatch {
         
         this.primaryData = [];
         this.secondaryData = [];
+        this.primaryFileName = '';
+        this.secondaryFileName = '';
         this.results = [];
         this.selectedPending = new Set();
         this.deletedPending = new Set();
         this.groupSelections = new Map();
         this.manualGroupSelections = new Set();
+        this.inboxItems = [];
         
         // Vistas
         this.paletteValidatorView = null;
@@ -35,6 +40,7 @@ class AlphaColorMatch {
         this.assignmentView = null;
         this.adminView = null;
         this.reportsView = null;
+        this.dashboardView = null;
         
         this.init();
     }
@@ -50,7 +56,19 @@ class AlphaColorMatch {
         this.initViews();
         this.initMenuNavigation();
         this.bindEvents();
+        await this.loadInbox();
         
+        // RECUPERAR VISTA GUARDADA
+        const lastView = localStorage.getItem('currentView') || 'dashboard';
+        if (this.switchView) this.switchView(lastView);
+        
+        // ACTIVAR SINCRONIZACIÓN EN TIEMPO REAL
+        this.setupRealtimeSync();
+
+        // ACTIVAR BACKUP PROGRAMADO (5:40 PM)
+        this.initScheduledBackup();
+        
+
         window.selectGroup = (groupId, source) => this.selectGroup(groupId, source);
         window.togglePendingAdd = (itemId) => this.togglePendingAdd(itemId);
         window.togglePendingDelete = (itemId) => this.togglePendingDelete(itemId);
@@ -98,6 +116,8 @@ class AlphaColorMatch {
         if (displaySpan) {
             displaySpan.textContent = `👤 ${user.username}${user.isMaster ? ' (MASTER)' : ''}`;
         }
+
+        this.ensureInboxBell();
         
         const menuItems = document.querySelectorAll('.menu-item');
         menuItems.forEach(item => {
@@ -165,6 +185,7 @@ class AlphaColorMatch {
             }
             
             this.primaryData = result.records;
+            this.primaryFileName = fileName;
             this.updateFileInfo('primary', fileName, this.primaryData.length);
             this.renderDataList('primary', this.primaryData);
             this.saveCurrentState();
@@ -206,6 +227,7 @@ class AlphaColorMatch {
             }
             
             this.secondaryData = result.records;
+            this.secondaryFileName = fileName;
             this.updateFileInfo('secondary', fileName, this.secondaryData.length);
             this.renderDataList('secondary', this.secondaryData);
             this.saveCurrentState();
@@ -242,6 +264,7 @@ class AlphaColorMatch {
         
         this.results = compareFiles(this.primaryData, this.secondaryData);
         console.log('📊 Resultados:', this.results.length);
+        this.logComparisonSession();
         
         renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
         this.validateExportReady();
@@ -341,6 +364,8 @@ class AlphaColorMatch {
             clearAllCache();
             this.primaryData = [];
             this.secondaryData = [];
+            this.primaryFileName = '';
+            this.secondaryFileName = '';
             this.results = [];
             this.selectedPending.clear();
             this.deletedPending.clear();
@@ -404,6 +429,7 @@ class AlphaColorMatch {
         this.assignmentView = new AssignmentView(this);
         this.adminView = new AdminView(this, this.auth);
         this.reportsView = new ReportsView(this);
+        this.dashboardView = new DashboardView(this);
     }
     
     initMenuNavigation() {
@@ -415,10 +441,14 @@ class AlphaColorMatch {
             development: document.getElementById('developmentView'),
             assignment: document.getElementById('assignmentView'),
             reports: document.getElementById('reportsView'),
+            dashboard: document.getElementById('dashboardView'),
             admin: document.getElementById('adminView')
         };
         
         const switchView = (viewName) => {
+            console.log(`🚀 Cambiando a vista: ${viewName}`);
+            localStorage.setItem('currentView', viewName);
+            
             Object.values(views).forEach(view => {
                 if (view) view.classList.remove('active');
             });
@@ -446,10 +476,14 @@ class AlphaColorMatch {
                 this.reportsView.updateFilters();
                 this.reportsView.render();
             }
+            if (viewName === 'dashboard' && this.dashboardView) {
+                this.dashboardView.render();
+            }
             if (viewName === 'admin' && this.adminView) {
                 this.adminView.render();
             }
         };
+        this.switchView = switchView;
         
         menuItems.forEach(item => {
             item.addEventListener('click', () => {
@@ -459,8 +493,263 @@ class AlphaColorMatch {
                 }
             });
         });
+    }
+
+    ensureInboxBell() {
+        const userInfo = document.querySelector('.header .user-info');
+        if (!userInfo) return;
+        if (document.getElementById('inboxBellBtn')) return;
+
+        const bellBtn = document.createElement('button');
+        bellBtn.id = 'inboxBellBtn';
+        bellBtn.className = 'logout-btn';
+        bellBtn.style.marginRight = '0.5rem';
+        bellBtn.innerHTML = '<i class="fas fa-bell"></i> Bandeja <span id="inboxBellCount" style="margin-left:0.25rem;">0</span>';
+        bellBtn.onclick = () => {
+            if (this.switchView) this.switchView('history');
+        };
+        userInfo.insertBefore(bellBtn, userInfo.firstChild);
+    }
+
+    async loadInbox() {
+        try {
+            console.log('📡 Cargando bandeja desde base de datos...');
+            const { data, error } = await supabase
+                .from('inbox')
+                .select('*')
+                .order('created_at', { ascending: false });
+            
+            if (error) throw error;
+            this.inboxItems = data || [];
+            console.log(`📥 ${this.inboxItems.length} mensajes cargados de la base de datos.`);
+        } catch (e) {
+            console.warn('⚠️ Error al cargar desde DB, usando respaldo local:', e);
+            const raw = localStorage.getItem('alphaColorInbox');
+            this.inboxItems = raw ? JSON.parse(raw) : [];
+        }
+        this.updateInboxBell();
+    }
+
+    logComparisonSession() {
+        const unmatched = this.results.filter(item =>
+            item.matchType === 'pending_primary' || item.matchType === 'pending_secondary'
+        ).length;
+        const invalidCmyk = [...this.primaryData, ...this.secondaryData].filter(rec =>
+            !Array.isArray(rec.cmyk) || rec.cmyk.length < 4 || rec.cmyk.some(v => !Number.isFinite(v) || v < 0 || v > 100)
+        ).length;
+        const entry = {
+            id: `cmp_${Date.now()}`,
+            createdAt: new Date().toISOString(),
+            user: this.auth.getCurrentUser()?.username || 'usuario',
+            primaryFile: this.primaryFileName || 'principal',
+            secondaryFile: this.secondaryFileName || 'secundario',
+            unmatched,
+            invalidCmyk
+        };
+        let logs = [];
+        try {
+            logs = JSON.parse(localStorage.getItem('comparisonReportLogs') || '[]');
+        } catch (e) {
+            logs = [];
+        }
+        logs.unshift(entry);
+        if (logs.length > 2000) logs = logs.slice(0, 2000);
+        localStorage.setItem('comparisonReportLogs', JSON.stringify(logs));
+    }
+
+    async saveInbox() {
+        // En el nuevo sistema, el guardado es individual por mensaje en addToInbox
+        // pero mantenemos esto para guardar la caché local como respaldo
+        localStorage.setItem('alphaColorInbox', JSON.stringify(this.inboxItems));
+    }
+
+    getInboxItems() {
+        return [...this.inboxItems].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+
+    updateInboxBell() {
+        const count = this.inboxItems.filter(item => !item.is_read && !item.read).length;
+        const bellCount = document.getElementById('inboxBellCount');
+        if (bellCount) bellCount.textContent = String(count);
+        const menuHistory = document.querySelector('.menu-item[data-view="history"] span');
+        if (menuHistory) menuHistory.textContent = count > 0 ? `Bandeja (${count})` : 'Bandeja';
+    }
+
+    async addToInbox(fileName, content, reason, plotter, colorCount, extra = {}) {
+        const currentUser = this.auth.getCurrentUser()?.username || 'usuario';
+        const item = {
+            subject: fileName,
+            content,
+            reason,
+            plotter,
+            color_count: colorCount,
+            created_by: currentUser,
+            created_at: new Date().toISOString(),
+            is_read: false,
+            assignment_id: extra.assignmentId || null
+        };
+
+        try {
+            // Intentar guardar en base de datos
+            const { error } = await supabase.from('inbox').insert(item);
+            if (error) throw error;
+            console.log('✅ Mensaje guardado en base de datos.');
+        } catch (e) {
+            console.error('❌ Error guardando en base de datos, guardando localmente:', e);
+            // Fallback local
+            item.id = `inbox_${Date.now()}`;
+            this.inboxItems.unshift(item);
+            this.saveInbox();
+        }
+
+        // Recargar para ver el cambio
+        await this.loadInbox();
         
-        switchView('comparator');
+        if (this.historyView?.render) this.historyView.render();
+        if (this.switchView) this.switchView('history');
+    }
+
+    async markInboxAsRead(id, read = true) {
+        try {
+            // Si el ID es un UUID (base de datos)
+            if (typeof id === 'string' && id.includes('-')) {
+                const { error } = await supabase
+                    .from('inbox')
+                    .update({ is_read: read })
+                    .eq('id', id);
+                if (error) throw error;
+            } else {
+                // Si es un ID local
+                const item = this.inboxItems.find(x => x.id === id);
+                if (item) item.read = read;
+                this.saveInbox();
+            }
+        } catch (e) {
+            console.error('Error al marcar como leído:', e);
+        }
+        
+        await this.loadInbox();
+        if (this.historyView?.render) this.historyView.render();
+    }
+
+    loadInboxItemAsSecondary(id) {
+        const item = this.inboxItems.find(x => x.id === id);
+        if (!item) {
+            alert('❌ No se encontró el mensaje de bandeja.');
+            return false;
+        }
+        try {
+            const records = parseTxtContent(item.content);
+            if (!records.length) {
+                alert('⚠️ El mensaje no contiene colores válidos.');
+                return false;
+            }
+            this.secondaryData = records;
+            this.updateFileInfo('secondary', item.subject || 'Bandeja', records.length);
+            this.renderDataList('secondary', this.secondaryData);
+            this.saveCurrentState();
+            this.markInboxAsRead(id, true);
+            if (this.switchView) this.switchView('comparator');
+            alert(`✅ Cargado como secundario: ${records.length} colores.`);
+            return true;
+        } catch (error) {
+            alert(`❌ Error cargando secundario desde bandeja: ${error.message || error}`);
+            return false;
+        }
+    }
+
+    setupRealtimeSync() {
+        try {
+            console.log('📡 Iniciando escucha en tiempo real (Asignaciones y Progreso)...');
+            
+            // Suscribirse a cambios en Asignaciones
+            supabase
+                .channel('assignments_realtime')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'assignments' }, () => {
+                    this.refreshDashboard('assignments');
+                })
+                .subscribe();
+
+            // Suscribirse a cambios en Progreso de Validación
+            supabase
+                .channel('progress_realtime')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'validation_progress' }, () => {
+                    this.refreshDashboard('validation_progress');
+                })
+                .subscribe();
+
+            // RECARGA INTELIGENTE: Eliminamos el heartbeat de 5s y lo dejamos solo como respaldo cada 2 minutos
+            setInterval(() => {
+                this.refreshDashboard('heartbeat');
+            }, 120000);
+            
+        } catch (e) {
+            console.error('Error en setupRealtimeSync:', e);
+        }
+    }
+
+    initScheduledBackup() {
+        console.log('⏰ Programador de backup activado (5:40 PM)');
+        setInterval(() => {
+            const now = new Date();
+            const hours = now.getHours();
+            const minutes = now.getMinutes();
+            
+            // Si son las 5:40 PM (17:40) y el usuario tiene permiso de backup
+            if (hours === 17 && minutes === 40) {
+                const alreadyDoneToday = localStorage.getItem('lastBackupDate') === now.toDateString();
+                if (!alreadyDoneToday && this.auth.hasPermission('backup')) {
+                    this.triggerBackup();
+                }
+            }
+        }, 60000); // Revisar cada minuto
+    }
+
+    async triggerBackup() {
+        try {
+            console.log('📦 Iniciando backup automático de seguridad...');
+            const tables = [
+                'usuarios', 
+                'assignments', 
+                'validation_progress', 
+                'library_txt', 
+                'valid_color_names',
+                'inbox',
+                'equivalency_groups'
+            ];
+            const backupData = {
+                timestamp: new Date().toISOString(),
+                version: '1.1',
+                data: {}
+            };
+
+            for (const table of tables) {
+                const { data } = await supabase.from(table).select('*');
+                backupData.data[table] = data || [];
+            }
+
+            const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `AlphaColor_Backup_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            localStorage.setItem('lastBackupDate', new Date().toDateString());
+            showNotification('✅ Backup automático completado con éxito', 'success');
+        } catch (e) {
+            console.error('Error en backup:', e);
+        }
+    }
+
+    refreshDashboard(source) {
+        if (this.dashboardView) {
+            console.log(`🔄 Refrescando dashboard (Origen: ${source})`);
+            this.dashboardView.render().catch(err => console.error('Error refrescando dashboard:', err));
+        }
     }
 }
 

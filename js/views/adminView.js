@@ -1,5 +1,6 @@
 // js/views/adminView.js
 import { Auth, ALL_PERMISSIONS } from '../core/auth.js';
+import { supabase } from '../core/supabaseClient.js';
 
 export class AdminView {
     constructor(app, auth) {
@@ -21,9 +22,6 @@ export class AdminView {
     }
     
     async render() {
-        const container = document.getElementById('adminView');
-        if (!container) return;
-        
         await this.renderUsers();
     }
     
@@ -31,13 +29,13 @@ export class AdminView {
         const tableBody = document.getElementById('adminTableBody');
         if (!tableBody) return;
         
-        tableBody.innerHTML = '<tr><td colspan="4" class="empty-state"><div class="loading-spinner"></div> Cargando usuarios...</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="4" class="empty-state"><div class="loading-spinner"></div> Cargando usuarios...<\/tr>';
         
         try {
             const users = await this.auth.getAllUsers();
             
             if (!users || users.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="4" class="empty-state">No hay usuarios registrados</td><\/tr>';
+                tableBody.innerHTML = '<tr><td colspan="4" class="empty-state">No hay usuarios registrados<\/tr>';
                 return;
             }
             
@@ -48,6 +46,8 @@ export class AdminView {
                 development: 'Desarrollo',
                 assignment: 'Asignación',
                 reports: 'Reportes',
+                dashboard: 'Dashboard',
+                backup: 'Backup Automático',
                 admin: 'Admin'
             };
             
@@ -67,25 +67,14 @@ export class AdminView {
                 
                 return `
                     <tr data-id="${user.id}">
-                        <td>
-                            <strong>${this.escapeHtml(user.username)}</strong>
-                            ${user.is_master ? '<span class="permission-badge master">👑 MASTER</span>' : ''}
-                            ${isCurrentUser ? '<span class="permission-badge allowed">(tú)</span>' : ''}
-                        </td>
-                        <td>
-                            <input type="password" value="********" disabled style="background:transparent; border:none; color:#9ca3af; width:100px;">
-                            <button class="admin-btn show-password" data-username="${this.escapeHtml(user.username)}" data-password="${user.password || ''}" title="Ver contraseña">
-                                <i class="fas fa-eye"></i>
-                            </button>
-                        </td>
-                        <td class="user-permissions">${badgesHtml}</td>
+                        <td><strong>${this.escapeHtml(user.username)}</strong>${user.is_master ? ' <span class="permission-badge master">👑 MASTER</span>' : ''}${isCurrentUser ? ' <span class="permission-badge allowed">(tú)</span>' : ''}<\/td>
+                        <td><input type="password" value="********" disabled style="background:transparent; border:none; color:#9ca3af; width:100px;"><button class="admin-btn show-password" data-username="${this.escapeHtml(user.username)}" data-password="${user.password || ''}"><i class="fas fa-eye"></i><\/button><\/td>
+                        <td class="user-permissions">${badgesHtml}<\/td>
                         <td class="admin-actions-cell">
-                            <button class="admin-btn edit-user" data-id="${user.id}" data-username="${this.escapeHtml(user.username)}" data-permissions='${JSON.stringify(user.permisos || [])}' data-ismaster="${user.is_master}" data-password="${user.password || ''}">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            ${!user.is_master ? `<button class="admin-btn delete delete-user" data-id="${user.id}" data-username="${this.escapeHtml(user.username)}"><i class="fas fa-trash"></i></button>` : ''}
-                        </td>
-                    </tr>
+                            <button class="admin-btn edit-user" data-id="${user.id}" data-username="${this.escapeHtml(user.username)}" data-permissions='${JSON.stringify(user.permisos || [])}' data-ismaster="${user.is_master}" data-password="${user.password || ''}"><i class="fas fa-edit"><\/i><\/button>
+                            ${!user.is_master ? `<button class="admin-btn delete delete-user" data-id="${user.id}" data-username="${this.escapeHtml(user.username)}"><i class="fas fa-trash"><\/i><\/button>` : ''}
+                        <\/td>
+                    <\/tr>
                 `;
             }).join('');
             
@@ -93,7 +82,7 @@ export class AdminView {
             
         } catch (error) {
             console.error('Error al cargar usuarios:', error);
-            tableBody.innerHTML = '<tr><td colspan="4" class="empty-state">❌ Error al cargar usuarios</td><\/tr>';
+            tableBody.innerHTML = '<tr><td colspan="4" class="empty-state">❌ Error al cargar usuarios<\/tr>';
         }
     }
     
@@ -146,37 +135,34 @@ export class AdminView {
                 </div>
                 <div class="modal-body">
                     ${isEditingMaster ? '<div class="warning-box">⚠️ El usuario MASTER tiene acceso total. No se pueden modificar sus permisos.</div>' : ''}
-                    
                     <div class="form-group">
-                        <label><i class="fas fa-user"></i> Usuario:</label>
+                        <label>👤 Usuario:</label>
                         <input type="text" id="modalUsername" value="${userToEdit ? this.escapeHtml(userToEdit.username) : ''}" ${isEditing ? 'disabled' : ''} placeholder="Ej: juan_perez">
                     </div>
-                    
                     <div class="form-group">
-                        <label><i class="fas fa-lock"></i> Contraseña:</label>
+                        <label>🔒 Contraseña:</label>
                         <div class="password-group">
-                            <input type="password" id="modalPassword" value="${userToEdit ? '********' : ''}" placeholder="${isEditing ? 'Dejar vacío para mantener' : 'Ingrese contraseña'}">
-                            <i class="fas fa-eye-slash toggle-password"></i>
+                            <input type="text" id="modalPassword" value="${userToEdit ? userToEdit.password : ''}" placeholder="Ingrese contraseña">
                         </div>
-                        <small>${isEditing ? 'Dejar vacío para mantener la misma contraseña' : 'Mínimo 6 caracteres'}</small>
+                        <small>${isEditing ? 'Puedes ver y editar la contraseña actual aquí' : 'Mínimo 6 caracteres'}</small>
                     </div>
-                    
                     ${!isEditingMaster ? `
                     <div class="permissions-group">
-                        <h4><i class="fas fa-check-circle"></i> Permisos de acceso:</h4>
+                        <h4>📋 Permisos de acceso:</h4>
                         <div class="permissions-checkboxes">
-                            <label><input type="checkbox" value="comparator" ${userToEdit?.permissions?.includes('comparator') ? 'checked' : ''}> <i class="fas fa-code-compare"></i> Comparar</label>
-                            <label><input type="checkbox" value="history" ${userToEdit?.permissions?.includes('history') ? 'checked' : ''}> <i class="fas fa-inbox"></i> Bandeja</label>
-                            <label><input type="checkbox" value="paletteValidator" ${userToEdit?.permissions?.includes('paletteValidator') ? 'checked' : ''}> <i class="fas fa-palette"></i> Validar Paleta</label>
-                            <label><input type="checkbox" value="development" ${userToEdit?.permissions?.includes('development') ? 'checked' : ''}> <i class="fas fa-paintbrush"></i> Desarrollo</label>
-                            <label><input type="checkbox" value="assignment" ${userToEdit?.permissions?.includes('assignment') ? 'checked' : ''}> <i class="fas fa-tasks"></i> Asignación</label>
-                            <label><input type="checkbox" value="reports" ${userToEdit?.permissions?.includes('reports') ? 'checked' : ''}> <i class="fas fa-chart-bar"></i> Reportes</label>
-                            <label><input type="checkbox" value="admin" ${userToEdit?.permissions?.includes('admin') ? 'checked' : ''}> <i class="fas fa-cog"></i> Admin</label>
+                            <label><input type="checkbox" value="comparator" ${userToEdit?.permissions?.includes('comparator') ? 'checked' : ''}> Comparar</label>
+                            <label><input type="checkbox" value="history" ${userToEdit?.permissions?.includes('history') ? 'checked' : ''}> Bandeja</label>
+                            <label><input type="checkbox" value="paletteValidator" ${userToEdit?.permissions?.includes('paletteValidator') ? 'checked' : ''}> Validar Paleta</label>
+                            <label><input type="checkbox" value="development" ${userToEdit?.permissions?.includes('development') ? 'checked' : ''}> Desarrollo</label>
+                            <label><input type="checkbox" value="assignment" ${userToEdit?.permissions?.includes('assignment') ? 'checked' : ''}> Asignación</label>
+                            <label><input type="checkbox" value="reports" ${userToEdit?.permissions?.includes('reports') ? 'checked' : ''}> Reportes</label>
+                            <label><input type="checkbox" value="dashboard" ${userToEdit?.permissions?.includes('dashboard') ? 'checked' : ''}> Dashboard</label>
+                            <label><input type="checkbox" value="backup" ${userToEdit?.permissions?.includes('backup') ? 'checked' : ''}> Backup Automático</label>
+                            <label><input type="checkbox" value="admin" ${userToEdit?.permissions?.includes('admin') ? 'checked' : ''}> Admin</label>
                         </div>
                     </div>
-                    
                     <div class="master-checkbox">
-                        <label><input type="checkbox" id="isMasterCheckbox" ${userToEdit?.isMaster ? 'checked' : ''}> <i class="fas fa-crown"></i> 👑 Es usuario MASTER (acceso total)</label>
+                        <label><input type="checkbox" id="isMasterCheckbox" ${userToEdit?.isMaster ? 'checked' : ''}> 👑 Es usuario MASTER (acceso total)</label>
                     </div>
                     ` : ''}
                 </div>
@@ -240,13 +226,14 @@ export class AdminView {
                 return;
             }
             
-            if (isEditing && password === '********') {
+            if (isEditing && !password) {
+                // Si está vacío en edición, no enviamos password para no sobreescribir
                 password = null;
             }
             
             const saveBtn = modal.querySelector('.btn-save');
             const originalText = saveBtn.innerHTML;
-            saveBtn.innerHTML = '<div class="loading-spinner"></div> Procesando...';
+            saveBtn.innerHTML = '⏳ Procesando...';
             saveBtn.disabled = true;
             
             try {
