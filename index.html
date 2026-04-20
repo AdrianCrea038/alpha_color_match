@@ -282,10 +282,7 @@
                                 <textarea id="assignmentComment" rows="1" placeholder="Ej: Asignar esta paleta para producción del lote #123..."></textarea>
                             </div>
 
-                            <div class="form-group">
-                                <label><i class="fas fa-hourglass-half"></i> Validez de Validación (Días):</label>
-                                <input type="number" id="assignmentValidityDays" class="assignment-select" value="30" min="1" style="background:#1e1e2c; border:1px solid #4b5563; border-radius:0.4rem; color:white; padding:0.5rem;">
-                            </div>
+
 
                             <div class="assignment-buttons">
                                 <button id="assignWorkBtn" class="btn-primary">📤 ASIGNAR TRABAJO</button>
@@ -306,8 +303,8 @@
 
                         <!-- SECCIÓN ALERTAS DE VENCIMIENTO -->
                         <div class="assignment-history" style="margin-top: 2rem; border-top: 1px solid #2d3748; padding-top: 2rem;">
-                            <h4 style="color: #f87171;"><i class="fas fa-exclamation-triangle"></i> Alertas de Re-validación Requerida</h4>
-                            <p style="font-size: 0.8rem; color: #9ca3af; margin-bottom: 1rem;">Archivos completados que han superado su periodo de validez y deben ser validados nuevamente.</p>
+                            <h4 style="color: #f87171;"><i class="fas fa-clock"></i> Gestión de Re-validación</h4>
+                            <p style="font-size: 0.8rem; color: #9ca3af; margin-bottom: 1rem;">Archivos completados: establezca el periodo de validez para recibir alertas cuando deban validarse nuevamente.</p>
                             <div id="assignmentAlertsList" class="history-list">
                                 <div class="empty-state">
                                     <div class="empty-icon">✅</div>
