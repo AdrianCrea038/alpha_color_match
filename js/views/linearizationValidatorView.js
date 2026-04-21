@@ -62,6 +62,7 @@ export class LinearizationValidatorView {
                                     <th>CMYK (C/M/Y/K)</th>
                                     <th>Lab (L/a/b)</th>
                                     <th>Estado de Validación</th>
+                                    <th>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="linResultsTableBody">
@@ -70,10 +71,64 @@ export class LinearizationValidatorView {
                     </div>
                 </div>
 
+                <!-- SECCIÓN DE COMPARACIÓN ESTRICTA -->
+                <div class="strict-comparison-section" style="margin-top: 3rem; border-top: 2px dashed rgba(0, 229, 255, 0.2); padding-top: 2rem;">
+                    <div class="palette-validator-header" style="margin-bottom: 1.5rem;">
+                        <h3 style="color: #ff007f;"><i class="fas fa-equals"></i> Comparación Estricta (Archivo vs Archivo)</h3>
+                        <p style="font-size: 0.85rem; color: #9ca3af;">Verificación binaria: Ambos archivos deben ser EXACTAMENTE iguales en nombres, NK y valores.</p>
+                    </div>
+
+                    <div class="upload-section" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                        <div class="upload-card">
+                            <h3><i class="fas fa-file-invoice"></i> 1. Archivo Original (Base)</h3>
+                            <div class="upload-area">
+                                <input type="file" id="strictFileA" accept=".txt" class="file-input">
+                                <label for="strictFileA" class="file-label">Archivo Base</label>
+                                <div id="strictFileAInfo" class="file-info"><span class="filename">No cargado</span></div>
+                            </div>
+                        </div>
+                        <div class="upload-card">
+                            <h3><i class="fas fa-file-signature"></i> 2. Archivo a Validar</h3>
+                            <div class="upload-area">
+                                <input type="file" id="strictFileB" accept=".txt" class="file-input">
+                                <label for="strictFileB" class="file-label">Archivo Nuevo</label>
+                                <div id="strictFileBInfo" class="file-info"><span class="filename">No cargado</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="text-align: center; margin-top: 1.5rem;">
+                        <button id="btnRunStrictCompare" class="btn-primary" style="background: #ff007f; padding: 0.8rem 2rem; font-weight: bold; display: none;">
+                            <i class="fas fa-bolt"></i> INICIAR COMPARACIÓN ESTRICTA
+                        </button>
+                    </div>
+
+                    <div id="strictResultsPanel" style="display: none; margin-top: 2rem;">
+                        <div class="results-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                            <h4 style="color: #ff007f; margin: 0;"><i class="fas fa-list-check"></i> Informe de Diferencias Estrictas</h4>
+                            <button id="btnResetStrict" class="btn-secondary" style="font-size: 0.75rem; padding: 0.4rem 0.8rem; background: rgba(255, 0, 127, 0.1); border-color: #ff007f; color: #ff007f;">
+                                <i class="fas fa-sync-alt"></i> Nueva Comparación
+                            </button>
+                        </div>
+                        <div class="table-wrapper">
+                            <table class="data-table">
+                                <thead style="background: rgba(255, 0, 127, 0.1);">
+                                    <tr>
+                                        <th style="width: 25%;">Archivo Base (Original)</th>
+                                        <th style="width: 25%;">Archivo Nuevo (A Validar)</th>
+                                        <th style="width: 35%;">Diferencias Encontradas</th>
+                                        <th style="width: 15%; text-align: center;">Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="strictResultsTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="linEmptyState" class="empty-state" style="padding: 4rem 2rem;">
                     <div class="empty-icon" style="font-size: 3rem; margin-bottom: 1rem;">🔬</div>
-                    <p>Cargue un archivo para iniciar la validación automática.</p>
-                    <p style="font-size: 0.8rem; color: #6b7280; max-width: 500px; margin: 0 auto;">El sistema buscará nombres duplicados, errores de nomenclatura como "(2)" y verificará que los colores equivalentes tengan valores idénticos.</p>
+                    <p>Cargue un archivo para iniciar la auditoría o use la sección de abajo para comparación estricta.</p>
                 </div>
             </div>
         `;
@@ -82,6 +137,7 @@ export class LinearizationValidatorView {
     }
 
     bindEvents() {
+        // Auditoría normal
         const fileInput = this.container.querySelector('#linValidatorFileInput');
         if (fileInput) {
             fileInput.addEventListener('change', (e) => this.handleFileLoad(e));
@@ -91,6 +147,189 @@ export class LinearizationValidatorView {
         if (resetBtn) {
             resetBtn.addEventListener('click', () => this.reset());
         }
+
+        // Comparación Estricta
+        const inputA = this.container.querySelector('#strictFileA');
+        const inputB = this.container.querySelector('#strictFileB');
+        const btnStrict = this.container.querySelector('#btnRunStrictCompare');
+
+        inputA?.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const { records } = await loadFile(file, true);
+                this.strictRecordsA = records;
+                this.container.querySelector('#strictFileAInfo .filename').textContent = file.name;
+                this.checkStrictReady();
+            }
+        });
+
+        inputB?.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const { records } = await loadFile(file, true);
+                this.strictRecordsB = records;
+                this.container.querySelector('#strictFileBInfo .filename').textContent = file.name;
+                this.checkStrictReady();
+            }
+        });
+
+        btnStrict?.addEventListener('click', () => this.performStrictComparison());
+
+        const btnResetStrict = this.container.querySelector('#btnResetStrict');
+        if (btnResetStrict) {
+            btnResetStrict.addEventListener('click', () => this.resetStrict());
+        }
+    }
+
+    checkStrictReady() {
+        const btn = this.container.querySelector('#btnRunStrictCompare');
+        if (this.strictRecordsA && this.strictRecordsB) {
+            btn.style.display = 'inline-block';
+        }
+    }
+
+    performStrictComparison() {
+        const tbody = this.container.querySelector('#strictResultsTableBody');
+        const panel = this.container.querySelector('#strictResultsPanel');
+        if (!tbody || !panel) return;
+
+        tbody.innerHTML = '';
+        panel.style.display = 'block';
+
+        // Indexar por nombre completo (el nombre normalizado ya incluye el NK si venía en el texto)
+        const mapA = new Map();
+        this.strictRecordsA.forEach(r => {
+            const key = r.name.toUpperCase().trim();
+            // Si hay duplicados del mismo nombre en el mismo archivo, tomamos el primero
+            if (!mapA.has(key)) mapA.set(key, r);
+        });
+
+        const mapB = new Map();
+        this.strictRecordsB.forEach(r => {
+            const key = r.name.toUpperCase().trim();
+            if (!mapB.has(key)) mapB.set(key, r);
+        });
+
+        const allKeys = Array.from(new Set([...mapA.keys(), ...mapB.keys()])).sort();
+        let diffCount = 0;
+
+        allKeys.forEach(key => {
+            const recA = mapA.get(key);
+            const recB = mapB.get(key);
+            
+            let diffs = [];
+            let status = 'valid';
+            let valA = recA ? `${recA.name} [NK: ${recA.nk || '-'}]` : '---';
+            let valB = recB ? `${recB.name} [NK: ${recB.nk || '-'}]` : '---';
+
+            if (recA && recB) {
+                // 1. Comparar NK explícitamente
+                const nkA = (recA.nk || '').trim().toUpperCase();
+                const nkB = (recB.nk || '').trim().toUpperCase();
+                if (nkA !== nkB) {
+                    diffs.push(`NK Diferente: "${nkA || '-'}" vs "${nkB || '-'}"`);
+                }
+
+                // 2. Comparar CMYK (con precisión de 6 decimales para máxima rigurosidad)
+                const cmykA = (recA.cmyk || []).map(v => Number(v).toFixed(6));
+                const cmykB = (recB.cmyk || []).map(v => Number(v).toFixed(6));
+                
+                if (cmykA.join('/') !== cmykB.join('/')) {
+                    diffs.push(`CMYK Diferente: [${cmykA.join(' / ')}] vs [${cmykB.join(' / ')}]`);
+                }
+
+                // 3. Comparar LAB (con precisión de 4 decimales)
+                const labA = (recA.lab || []).map(v => Number(v).toFixed(4));
+                const labB = (recB.lab || []).map(v => Number(v).toFixed(4));
+                
+                if (labA.join('/') !== labB.join('/')) {
+                    diffs.push(`LAB Diferente: [${labA.join(' / ')}] vs [${labB.join(' / ')}]`);
+                }
+
+                if (diffs.length > 0) {
+                    status = 'invalid';
+                    diffCount++;
+                }
+            } else if (recA) {
+                diffs.push('El color NO existe en el nuevo archivo');
+                status = 'missing';
+                diffCount++;
+            } else {
+                diffs.push('El color es NUEVO (no existe en la base)');
+                status = 'additional';
+                diffCount++;
+            }
+
+            this.addStrictRow(tbody, valA, valB, diffs, status);
+        });
+
+        if (diffCount === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #4ade80; padding: 3rem; font-size: 1.1rem;">
+                <div style="font-size: 3rem; margin-bottom: 1rem;">✅</div>
+                <strong>¡ARCHIVOS IDÉNTICOS!</strong><br>
+                <span style="font-weight: normal; opacity: 0.8;">No se encontró ninguna diferencia en nombres, NK, CMYK ni LAB.</span>
+            </td></tr>`;
+        }
+    }
+
+    addStrictRow(tbody, valA, valB, diffs, status) {
+        const row = document.createElement('tr');
+        
+        let statusLabel = 'IDÉNTICO';
+        let statusClass = 'valid';
+        let rowStyle = '';
+
+        if (status === 'invalid') {
+            statusLabel = 'DIFERENTE';
+            statusClass = 'invalid';
+            rowStyle = 'background: rgba(244, 63, 94, 0.05);';
+        } else if (status === 'missing') {
+            statusLabel = 'FALTANTE';
+            statusClass = 'invalid';
+            rowStyle = 'background: rgba(251, 191, 36, 0.05);';
+        } else if (status === 'additional') {
+            statusLabel = 'ADICIONAL';
+            statusClass = 'warning';
+            rowStyle = 'background: rgba(0, 229, 255, 0.05);';
+        }
+
+        const diffHtml = diffs.length > 0 
+            ? diffs.map(d => `<div style="margin-bottom: 4px; padding-left: 10px; border-left: 2px solid #f43f5e;"><i class="fas fa-exclamation-circle" style="font-size: 0.7rem;"></i> ${escapeHtml(d)}</div>`).join('')
+            : '<div style="color: #4ade80;"><i class="fas fa-check"></i> Sin diferencias</div>';
+
+        row.innerHTML = `
+            <td style="${rowStyle} font-size: 0.8rem; font-weight: 500; vertical-align: top;">${escapeHtml(valA)}</td>
+            <td style="${rowStyle} font-size: 0.8rem; font-weight: 500; vertical-align: top;">${escapeHtml(valB)}</td>
+            <td style="${rowStyle} font-size: 0.75rem; color: ${status === 'valid' ? '#4ade80' : '#f43f5e'}; vertical-align: top;">${diffHtml}</td>
+            <td style="${rowStyle} text-align: center; vertical-align: top;"><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+        `;
+        tbody.appendChild(row);
+    }
+
+    resetStrict() {
+        this.strictRecordsA = null;
+        this.strictRecordsB = null;
+        
+        const inputA = this.container.querySelector('#strictFileA');
+        const inputB = this.container.querySelector('#strictFileB');
+        if (inputA) inputA.value = '';
+        if (inputB) inputB.value = '';
+
+        const infoA = this.container.querySelector('#strictFileAInfo .filename');
+        const infoB = this.container.querySelector('#strictFileBInfo .filename');
+        if (infoA) infoA.textContent = 'No cargado';
+        if (infoB) infoB.textContent = 'No cargado';
+        
+        const btnRun = this.container.querySelector('#btnRunStrictCompare');
+        if (btnRun) btnRun.style.display = 'none';
+
+        const panel = this.container.querySelector('#strictResultsPanel');
+        if (panel) panel.style.display = 'none';
+
+        const tbody = this.container.querySelector('#strictResultsTableBody');
+        if (tbody) tbody.innerHTML = '';
+        
+        console.log('🧹 Comparación estricta reiniciada.');
     }
 
     reset() {
