@@ -7,6 +7,7 @@ import { renderResults } from './modules/resultsRenderer.js';
 import { exportResults } from './modules/exporter.js';
 import { clearAllCache, saveComparatorState, loadComparatorState } from './modules/cacheManager.js';
 import { showNotification } from './core/utils.js';
+import { findDuplicateGroups, showDuplicateModal } from './modules/duplicateHandler.js';
 
 // Importar vistas
 import { PaletteValidatorView } from './views/paletteValidatorView.js';
@@ -16,6 +17,7 @@ import { AssignmentView } from './views/assignmentView.js';
 import { AdminView } from './views/adminView.js';
 import { ReportsView } from './views/reportsView.js';
 import { DashboardView } from './views/dashboardView.js';
+import { LinearizationValidatorView } from './views/linearizationValidatorView.js';
 import { supabase } from './core/supabaseClient.js';
 
 class AlphaColorMatch {
@@ -41,6 +43,7 @@ class AlphaColorMatch {
         this.adminView = null;
         this.reportsView = null;
         this.dashboardView = null;
+        this.linearizationValidatorView = null;
         
         this.init();
     }
@@ -163,37 +166,20 @@ class AlphaColorMatch {
         const file = event.target.files[0];
         if (!file) return;
         
-        console.log('📁 Cargando archivo principal:', file.name);
-        
         try {
-            const { records, fileName } = await loadFile(file);
-            console.log('📊 Registros parseados:', records.length);
-            
-            let correctionsApplied = 0;
-            
-            const onCorrection = (oldName, newName, reason) => {
-                correctionsApplied++;
-                console.log(`✏️ Corrección ${correctionsApplied}: "${oldName}" → "${newName}" (Motivo: ${reason})`);
-                this.saveCorrectionHistory(oldName, newName, reason);
-            };
-            
-            const result = await validateAndCorrectRecords(records, 'primary', onCorrection);
-            
-            if (result.records.length === 0) {
-                alert('❌ No se pudieron cargar los datos del archivo principal.');
-                return;
-            }
-            
-            this.primaryData = result.records;
-            this.primaryFileName = fileName;
-            this.updateFileInfo('primary', fileName, this.primaryData.length);
-            this.renderDataList('primary', this.primaryData);
-            this.saveCurrentState();
-            
-            if (correctionsApplied > 0) {
-                alert(`✅ Archivo principal cargado: ${this.primaryData.length} colores\n✏️ Correcciones aplicadas: ${correctionsApplied}`);
-            } else {
-                alert(`✅ Archivo principal cargado: ${this.primaryData.length} colores`);
+            const result = await this.processFileWithValidation(file, 'primary');
+            if (result) {
+                this.primaryData = result.records;
+                this.primaryFileName = result.fileName;
+                this.updateFileInfo('primary', result.fileName, this.primaryData.length);
+                this.renderDataList('primary', this.primaryData);
+                this.saveCurrentState();
+                
+                if (result.correctionsApplied > 0 || result.duplicatesResolved > 0) {
+                    showNotification('Archivo Cargado', `Se procesaron ${this.primaryData.length} registros. (Correcciones: ${result.correctionsApplied}, Duplicados: ${result.duplicatesResolved})`, 'success');
+                } else {
+                    showNotification('Archivo Cargado', `Se cargaron ${this.primaryData.length} registros correctamente.`, 'success');
+                }
             }
         } catch (error) {
             console.error('❌ Error:', error);
@@ -205,42 +191,83 @@ class AlphaColorMatch {
         const file = event.target.files[0];
         if (!file) return;
         
-        console.log('📁 Cargando archivo secundario:', file.name);
-        
         try {
-            const { records, fileName } = await loadFile(file);
-            console.log('📊 Registros parseados:', records.length);
-            
-            let correctionsApplied = 0;
-            
-            const onCorrection = (oldName, newName, reason) => {
-                correctionsApplied++;
-                console.log(`✏️ Corrección ${correctionsApplied}: "${oldName}" → "${newName}" (Motivo: ${reason})`);
-                this.saveCorrectionHistory(oldName, newName, reason);
-            };
-            
-            const result = await validateAndCorrectRecords(records, 'secondary', onCorrection);
-            
-            if (result.records.length === 0) {
-                alert('❌ No se pudieron cargar los datos del archivo secundario.');
-                return;
-            }
-            
-            this.secondaryData = result.records;
-            this.secondaryFileName = fileName;
-            this.updateFileInfo('secondary', fileName, this.secondaryData.length);
-            this.renderDataList('secondary', this.secondaryData);
-            this.saveCurrentState();
-            
-            if (correctionsApplied > 0) {
-                alert(`✅ Archivo secundario cargado: ${this.secondaryData.length} colores\n✏️ Correcciones aplicadas: ${correctionsApplied}`);
-            } else {
-                alert(`✅ Archivo secundario cargado: ${this.secondaryData.length} colores`);
+            const result = await this.processFileWithValidation(file, 'secondary');
+            if (result) {
+                this.secondaryData = result.records;
+                this.secondaryFileName = result.fileName;
+                this.updateFileInfo('secondary', result.fileName, this.secondaryData.length);
+                this.renderDataList('secondary', this.secondaryData);
+                this.saveCurrentState();
+                
+                if (result.correctionsApplied > 0 || result.duplicatesResolved > 0) {
+                    showNotification('Archivo Cargado', `Se procesaron ${this.secondaryData.length} registros. (Correcciones: ${result.correctionsApplied}, Duplicados: ${result.duplicatesResolved})`, 'success');
+                } else {
+                    showNotification('Archivo Cargado', `Se cargaron ${this.secondaryData.length} registros correctamente.`, 'success');
+                }
             }
         } catch (error) {
             console.error('❌ Error:', error);
             alert(`❌ Error al cargar archivo secundario: ${error.message || error}`);
         }
+    }
+
+    async processFileWithValidation(file, fileType) {
+        console.log(`📁 Procesando archivo ${fileType}: ${file.name}`);
+        const { records: rawRecords, fileName } = await loadFile(file, true); // keepDuplicates = true
+        
+        // 1. Detectar duplicados y mala nomenclatura
+        const duplicateGroups = findDuplicateGroups(rawRecords);
+        const hasParentheses = rawRecords.some(r => /\([^)]*\)/.test(r.name)); 
+        
+        if (duplicateGroups.length > 0 || hasParentheses) {
+            showNotification('Auditoría de Archivo', `Se detectaron ${duplicateGroups.length} duplicados y problemas de formato. Iniciando asistente...`, 'info');
+        }
+
+        let currentRecords = [...rawRecords];
+        let duplicatesResolved = 0;
+
+        // 2. Resolver Duplicados
+        if (duplicateGroups.length > 0) {
+            const indicesToRemove = await showDuplicateModal(duplicateGroups);
+            if (indicesToRemove.length > 0) {
+                currentRecords = currentRecords.filter((_, idx) => !indicesToRemove.includes(idx));
+                duplicatesResolved = duplicateGroups.length;
+            }
+        }
+
+        // 3. Resolver Nombres Mal Escritos (usando el validador existente)
+        let correctionsApplied = 0;
+        const onCorrection = (oldName, newName, reason) => {
+            correctionsApplied++;
+            this.saveCorrectionHistory(oldName, newName, reason);
+        };
+
+        // Forzar validación si el nombre base O el NK tienen paréntesis
+        const recordsToValidate = currentRecords.map(r => {
+            if (/\([^)]*\)/.test(r.nk || '')) {
+                // Si el NK tiene paréntesis, lo movemos al nombre base para que el validador lo detecte
+                return {
+                    ...r,
+                    baseName: `${r.baseName} ${r.nk}`.trim(),
+                    nk: ''
+                };
+            }
+            return r;
+        });
+
+        const validationResult = await validateAndCorrectRecords(recordsToValidate, fileType, onCorrection);
+        
+        if (validationResult.records.length === 0 && currentRecords.length > 0) {
+            return null; // El usuario canceló la validación
+        }
+
+        return {
+            records: validationResult.records,
+            fileName,
+            correctionsApplied,
+            duplicatesResolved
+        };
     }
     
     compareFiles() {
@@ -430,6 +457,7 @@ class AlphaColorMatch {
         this.adminView = new AdminView(this, this.auth);
         this.reportsView = new ReportsView(this);
         this.dashboardView = new DashboardView(this);
+        this.linearizationValidatorView = new LinearizationValidatorView(this);
     }
     
     initMenuNavigation() {
@@ -442,6 +470,7 @@ class AlphaColorMatch {
             assignment: document.getElementById('assignmentView'),
             reports: document.getElementById('reportsView'),
             dashboard: document.getElementById('dashboardView'),
+            linearizationValidator: document.getElementById('linearizationValidatorView'),
             admin: document.getElementById('adminView')
         };
         
@@ -478,6 +507,9 @@ class AlphaColorMatch {
             }
             if (viewName === 'dashboard' && this.dashboardView) {
                 this.dashboardView.render();
+            }
+            if (viewName === 'linearizationValidator' && this.linearizationValidatorView) {
+                this.linearizationValidatorView.render();
             }
             if (viewName === 'admin' && this.adminView) {
                 this.adminView.render();

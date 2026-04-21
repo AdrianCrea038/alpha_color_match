@@ -1,29 +1,43 @@
 // js/modules/nameValidator.js
-import { ALL_VALID_COLOR_NAMES } from '../core/constants.js';
 import { normalizeSpaces, escapeHtml } from '../core/utils.js';
 import { addCustomValidColorName, getCustomValidColorNames } from '../core/supabaseClient.js';
 
-console.log('📋 Todos los nombres válidos cargados:', ALL_VALID_COLOR_NAMES.length);
-
 let appInstance = null;
 let validColorNamesLoaded = false;
-const validColorNamesSet = new Set(ALL_VALID_COLOR_NAMES.map(name => normalizeSpaces(name).toUpperCase()));
 
 export function setAppInstance(app) {
     appInstance = app;
 }
 
+/**
+ * Obtiene el Set de nombres válidos actualizado desde window o constants
+ */
+function getValidNamesSet() {
+    const names = window.ALL_VALID_COLOR_NAMES || [];
+    return new Set(names.map(name => normalizeSpaces(name).toUpperCase()));
+}
+
 export function isValidColorName(baseName) {
+    if (!baseName) return false;
+    
+    // 1. Si contiene paréntesis, es inválido
+    if (/\([^)]*\)/.test(baseName)) return false;
+    
+    // 2. Si contiene un código NK al final (ej: "BLUE NK123"), es inválido para linearización
+    if (/\s+NK[A-Z0-9\-]+$/i.test(baseName.trim())) return false;
+    
+    const validSet = getValidNamesSet();
     const normalized = normalizeSpaces(baseName).toUpperCase();
-    return validColorNamesSet.has(normalized);
+    return validSet.has(normalized);
 }
 
 function addNameToLocalCatalog(name) {
     const normalized = normalizeSpaces(name || '').toUpperCase();
-    if (!normalized || validColorNamesSet.has(normalized)) return;
-    validColorNamesSet.add(normalized);
-    ALL_VALID_COLOR_NAMES.push(normalized);
-    ALL_VALID_COLOR_NAMES.sort((a, b) => a.localeCompare(b));
+    if (!window.ALL_VALID_COLOR_NAMES) window.ALL_VALID_COLOR_NAMES = [];
+    if (!window.ALL_VALID_COLOR_NAMES.includes(normalized)) {
+        window.ALL_VALID_COLOR_NAMES.push(normalized);
+        window.ALL_VALID_COLOR_NAMES.sort();
+    }
 }
 
 async function ensureValidColorCatalogLoaded() {
@@ -66,12 +80,13 @@ function showCorrectionModal(colorData, index, totalInvalid) {
         modal.style.zIndex = '10001';
         
         let selectedValue = '';
+        const allNames = window.ALL_VALID_COLOR_NAMES || [];
         
         const renderSuggestions = (filterText) => {
             const suggestionsList = modal.querySelector('#suggestionsList');
             const filterLower = (filterText || '').toLowerCase();
             
-            const matches = ALL_VALID_COLOR_NAMES.filter(name =>
+            const matches = allNames.filter(name =>
                 name.toLowerCase().includes(filterLower)
             ).slice(0, 15);
             
@@ -123,43 +138,38 @@ function showCorrectionModal(colorData, index, totalInvalid) {
                 </div>
                 <div class="modal-body" style="padding: 1.5rem;">
                     <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; border-left: 4px solid #ff007f;">
-                        <p style="margin:0 0 0.5rem;"><strong>Color mal escrito:</strong> <span style="color:#ff007f;">${escapeHtml(colorData.name)}</span></p>
-                        <p style="margin:0;"><strong>NK:</strong> ${colorData.nk || 'N/A'}</p>
-                    </div>
-
-                    <div class="form-group" style="margin-bottom: 1.5rem; position: relative;">
-                        <label style="display:block; margin-bottom:0.5rem; color:#9ca3af;">Buscar nombre correcto en la lista:</label>
-                        <div style="position:relative;">
-                            <input type="text" id="searchInput" placeholder="Escribe para buscar..." autocomplete="off" style="width:100%; padding:0.8rem; background:#0c0c12; border:1px solid #2d3748; border-radius:0.5rem; color:white; font-size:1rem;">
-                        </div>
-                        <div id="suggestionsList" style="max-height: 200px; overflow-y: auto; margin-top: 0.25rem; border-radius: 0.5rem; background: #1a1a2a; border: 1px solid #4b5563; display: none; position: absolute; z-index: 100; width: 100%; box-shadow: 0 10px 25px rgba(0,0,0,0.5);"></div>
+                        <p style="margin:0 0 0.5rem;"><strong>Valor detectado:</strong> <span style="color:#ff007f;">${escapeHtml(colorData.name)}</span></p>
+                        <p style="margin:0;"><strong>NK actual:</strong> <span id="currentNkDisplay">${escapeHtml(colorData.nk || 'Sin NK')}</span></p>
                     </div>
 
                     <div class="form-group" style="margin-bottom: 1rem;">
-                        <label style="display:block; margin-bottom:0.5rem; color:#9ca3af;">Motivo de la corrección:</label>
-                        <select id="correctionReason" style="width:100%; padding:0.8rem; background:#0c0c12; border:1px solid #2d3748; border-radius:0.5rem; color:white; font-size:1rem;">
-                            <option value="" disabled selected>-- Selecciona un motivo --</option>
-                            <option value="Mal escrito nombre">1. Mal escrito nombre</option>
-                            <option value="Error en el CYMK">2. Error en el CYMK</option>
-                            <option value="Color no encontrado">3. Color no encontrado</option>
+                        <label style="display:block; margin-bottom:0.4rem; color:#9ca3af; font-size: 0.85rem;">Nombre Correcto del Color:</label>
+                        <div style="position:relative;">
+                            <input type="text" id="searchInput" placeholder="Buscar nombre oficial..." autocomplete="off" style="width:100%; padding:0.7rem; background:#0c0c12; border:1px solid #2d3748; border-radius:0.5rem; color:white;">
+                        </div>
+                        <div id="suggestionsList" style="max-height: 150px; overflow-y: auto; margin-top: 0.25rem; border-radius: 0.5rem; background: #1a1a2a; border: 1px solid #4b5563; display: none; position: absolute; z-index: 100; width: calc(100% - 3rem); box-shadow: 0 10px 25px rgba(0,0,0,0.5);"></div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 1rem;">
+                        <label style="display:block; margin-bottom:0.4rem; color:#9ca3af; font-size: 0.85rem;">Código NK (Manual):</label>
+                        <input type="text" id="manualNkInput" placeholder="Ej: NK123" style="width:100%; padding:0.7rem; background:#0c0c12; border:1px solid #2d3748; border-radius:0.5rem; color:#00e5ff; font-weight: bold;">
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 1rem;">
+                        <label style="display:block; margin-bottom:0.4rem; color:#9ca3af; font-size: 0.85rem;">Motivo de la corrección:</label>
+                        <select id="correctionReason" style="width:100%; padding:0.7rem; background:#0c0c12; border:1px solid #2d3748; border-radius:0.5rem; color:white;">
+                            <option value="" disabled selected>-- Selecciona --</option>
+                            <option value="Mal escrito nombre">1. Mal escrito nombre / Paréntesis</option>
+                            <option value="Limpieza de NK">2. Limpieza de NK en nombre</option>
+                            <option value="Error en el CYMK">3. Error en el CYMK</option>
                         </select>
                     </div>
                 </div>
                 <div class="modal-buttons" style="display: flex; gap: 1rem; justify-content: flex-end; padding: 1.5rem; background: rgba(0,0,0,0.2); border-top: 1px solid #2d3748;">
-                    <button class="btn-secondary cancel-correction" style="padding: 0.8rem 1.5rem; cursor:pointer; border-radius: 0.5rem; border: 1px solid #4b5563; background: transparent; color: white;">Cancelar</button>
-                    <button class="btn-primary apply-correction" style="padding: 0.8rem 2rem; background:#ff007f !important; cursor:pointer; border: none; border-radius: 0.5rem; color: white; font-weight: bold; transition: all 0.2s ease;" disabled>
-                        <i class="fas fa-check" style="color: white; margin-right: 0.5rem;"></i> APLICAR CORRECCIÓN
+                    <button class="btn-secondary cancel-correction" style="padding: 0.7rem 1.2rem; cursor:pointer; border-radius: 0.5rem; border: 1px solid #4b5563; background: transparent; color: white;">Cancelar</button>
+                    <button class="btn-primary apply-correction" style="padding: 0.7rem 1.5rem; background:#ff007f !important; cursor:pointer; border: none; border-radius: 0.5rem; color: white; font-weight: bold;" disabled>
+                        APLICAR
                     </button>
-                    <style>
-                        .apply-correction:active {
-                            transform: scale(0.95);
-                            background: #d4006a !important;
-                            box-shadow: 0 0 15px rgba(255, 0, 127, 0.5);
-                        }
-                        .apply-correction:not(:disabled):hover {
-                            background: #ff3399 !important;
-                        }
-                    </style>
                 </div>
             </div>
         `;
@@ -167,11 +177,13 @@ function showCorrectionModal(colorData, index, totalInvalid) {
         document.body.appendChild(modal);
         
         const searchInput = modal.querySelector('#searchInput');
+        const manualNkInput = modal.querySelector('#manualNkInput');
         const reasonSelect = modal.querySelector('#correctionReason');
         const applyBtn = modal.querySelector('.apply-correction');
         
-        // PRE-LLENAR CON EL NOMBRE MAL ESCRITO
+        // PRE-LLENAR DATOS
         searchInput.value = colorData.baseName || '';
+        manualNkInput.value = colorData.nk || '';
         renderSuggestions(searchInput.value);
         
         searchInput.addEventListener('input', (e) => {
@@ -190,18 +202,20 @@ function showCorrectionModal(colorData, index, totalInvalid) {
         modal.querySelector('.cancel-correction').onclick = () => { closeModal(); resolve(null); };
         
         applyBtn.onclick = async () => {
-            const finalName = (selectedValue || searchInput.value.trim()).toUpperCase();
-            let exactMatch = ALL_VALID_COLOR_NAMES.find(n => n.toUpperCase() === finalName);
+            const finalBaseName = (selectedValue || searchInput.value.trim()).toUpperCase();
+            const finalNk = manualNkInput.value.trim().toUpperCase();
+            
+            let exactMatch = allNames.find(n => n.toUpperCase() === finalBaseName);
             
             if (!exactMatch) {
-                if (confirm(`⚠️ "${finalName}" no está en la lista oficial.\n\n¿Desea agregarlo a la base de datos permanentemente?`)) {
-                    const res = await addCustomValidColorName(finalName, appInstance?.auth?.getCurrentUser()?.username || 'usuario');
-                    if (res.success) addNameToLocalCatalog(finalName);
+                if (confirm(`⚠️ "${finalBaseName}" no está en la lista oficial.\n\n¿Desea agregarlo a la base de datos permanentemente?`)) {
+                    const res = await addCustomValidColorName(finalBaseName, appInstance?.auth?.getCurrentUser()?.username || 'usuario');
+                    if (res.success) addNameToLocalCatalog(finalBaseName);
                 }
-                exactMatch = finalName;
+                exactMatch = finalBaseName;
             }
             
-            const newFullName = colorData.nk ? `${exactMatch} ${colorData.nk}` : exactMatch;
+            const newFullName = finalNk ? `${exactMatch} ${finalNk}` : exactMatch;
             closeModal();
             resolve({ newBaseName: exactMatch, newFullName, reason: reasonSelect.value });
         };
@@ -221,7 +235,7 @@ export async function validateAndCorrectRecords(records, fileType, onCorrectionA
     
     if (correctionsNeeded.length === 0) return { records: correctedRecords, corrected: false };
     
-    alert(`⚠️ Se encontraron ${correctionsNeeded.length} colores no válidos.`);
+    alert(`⚠️ Se encontraron ${correctionsNeeded.length} nombres que requieren atención.`);
     
     for (let idx = 0; idx < correctionsNeeded.length; idx++) {
         const { record, index } = correctionsNeeded[idx];
@@ -232,6 +246,7 @@ export async function validateAndCorrectRecords(records, fileType, onCorrectionA
         
         correctedRecords[index].baseName = result.newBaseName;
         correctedRecords[index].name = result.newFullName;
+        correctedRecords[index].nk = result.newFullName.split(' ').pop().startsWith('NK') ? result.newFullName.split(' ').pop() : '';
         
         if (onCorrectionApplied) onCorrectionApplied(originalName, result.newFullName, result.reason);
         findAndCorrectInOtherArray(originalName, result.newBaseName, result.newFullName, fileType);
