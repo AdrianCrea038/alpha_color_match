@@ -462,7 +462,7 @@ export class AssignmentView {
             let statusStyle = '';
             
             if (validez > 0) {
-                const fechaFin = new Date(a.fecha_actualizacion || a.updated_at || a.fecha_asignacion);
+                const fechaFin = new Date(a.updated_at || a.fecha_asignacion);
                 const diasPasados = Math.floor((new Date() - fechaFin) / (1000 * 60 * 60 * 24));
                 const esVencido = diasPasados >= validez;
                 
@@ -489,7 +489,7 @@ export class AssignmentView {
                             <span class="assignment-badge plotter">🖨️ Plotter ${a.plotter}</span>
                             <span class="assignment-badge user">👤 ${a.usuario_asignado}</span>
                         </div>
-                        <div class="assignment-date">Finalizado: ${new Date(a.fecha_actualizacion || a.updated_at || a.fecha_asignacion).toLocaleDateString()}</div>
+                        <div class="assignment-date">Finalizado: ${new Date(a.updated_at || a.fecha_asignacion).toLocaleDateString()}</div>
                     </div>
                     <div class="assignment-details">
                         <p><strong>📄 Archivo:</strong> <span class="assignment-filename">${a.txt_nombre || a.txt_id}</span></p>
@@ -528,8 +528,7 @@ export class AssignmentView {
             const { error } = await supabase
                 .from('assignments')
                 .update({ 
-                    validez_dias: days,
-                    fecha_actualizacion: new Date().toISOString() // Actualizar fecha para contar desde ahora
+                    validez_dias: days
                 })
                 .eq('id', assignmentId);
             

@@ -400,11 +400,17 @@ export class LinearizationValidatorView {
         });
         this.suggestedNk = Object.entries(nkCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
 
-        // 1. Duplicados de Nombre (Usando baseName para ignorar NKs)
-        const nameCounts = {};
+        // 1. Conteos para validación en dos pasos
+        const nameCounts = {};       // Para detectar color repetido en distintas máquinas
+        const compositeCounts = {};  // Para detectar duplicados exactos (Error real)
+        
         this.records.forEach(r => {
-            const name = (r.baseName || '').toUpperCase().trim();
-            nameCounts[name] = (nameCounts[name] || 0) + 1;
+            const bName = (r.baseName || '').toUpperCase().trim();
+            const nk = (r.nk || '').toUpperCase().trim();
+            const fullKey = `${bName}|${nk}`;
+            
+            nameCounts[bName] = (nameCounts[bName] || 0) + 1;
+            compositeCounts[fullKey] = (compositeCounts[fullKey] || 0) + 1;
         });
 
         // 2. Paréntesis (ej: "(2)", "(VERSIÓN)", "(COPIA)")
@@ -417,11 +423,15 @@ export class LinearizationValidatorView {
         results.forEach(record => {
             const bName = (record.baseName || '').trim();
             const bNameUpper = bName.toUpperCase();
+            const nkUpper = (record.nk || '').toUpperCase().trim();
             const fullName = (record.name || '').trim();
 
-            // Error de duplicado
-            if (nameCounts[bNameUpper] > 1) {
-                record.errors.push({ type: 'duplicate', message: 'Nombre duplicado' });
+            // FLUJO DE DUPLICIDAD EN DOS PASOS:
+            const compositeKey = `${bNameUpper}|${nkUpper}`;
+            
+            if (compositeCounts[compositeKey] > 1) {
+                // NIVEL 1: Error Crítico (Rojo) - El mismo registro está dos veces
+                record.errors.push({ type: 'duplicate', message: 'Registro duplicado (Nombre y NK idénticos)' });
             }
 
             // Error de paréntesis (Buscamos en el nombre completo por si se extrajo como NK)
@@ -459,17 +469,18 @@ export class LinearizationValidatorView {
                 record.errors.push({ type: 'naming', message: 'Nombre NO registrado en base de datos' });
             }
 
-            // Agrupar para consistencia
+            // Agrupar para consistencia (Agrupamos por Grupo + NK para permitir diferencias entre máquinas)
             const eqData = equivalenceMap.get(bNameUpper);
             if (eqData) {
-                if (!groupsInFile[eqData.groupId]) groupsInFile[eqData.groupId] = [];
-                groupsInFile[eqData.groupId].push(record);
+                const groupKey = `${eqData.groupId}|${nkUpper}`;
+                if (!groupsInFile[groupKey]) groupsInFile[groupKey] = [];
+                groupsInFile[groupKey].push(record);
             }
         });
 
-        // Validar consistencia dentro de cada grupo
-        for (const groupId in groupsInFile) {
-            const groupRecords = groupsInFile[groupId];
+        // Validar consistencia dentro de cada grupo (Filtrado por mismo NK)
+        for (const groupKey in groupsInFile) {
+            const groupRecords = groupsInFile[groupKey];
             if (groupRecords.length > 1) {
                 const first = groupRecords[0];
                 const firstCmyk = (first.cmyk || []).map(v => Number(v).toFixed(2)).join('|');
@@ -481,10 +492,10 @@ export class LinearizationValidatorView {
                     const currentLab = (current.lab || []).map(v => Number(v).toFixed(2)).join('|');
 
                     if (firstCmyk !== currentCmyk || firstLab !== currentLab) {
-                        // Marcar todos los del grupo con error de consistencia
+                        // Marcar todos los del grupo con error de consistencia (solo dentro de este NK)
                         groupRecords.forEach(r => {
                             if (!r.errors.some(e => e.type === 'consistency')) {
-                                r.errors.push({ type: 'consistency', message: 'Inconsistencia en valores del grupo' });
+                                r.errors.push({ type: 'consistency', message: 'Inconsistencia de valores en el mismo NK' });
                             }
                         });
                         break;

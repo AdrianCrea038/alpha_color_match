@@ -86,7 +86,7 @@ export class ReportsView {
         const rows = [];
         for (const a of assignments) {
             const start = new Date(a.fecha_asignacion);
-            const end = a.estado === 'completado' ? new Date(a.fecha_actualizacion || a.updated_at || a.fecha_asignacion) : new Date();
+            const end = a.estado === 'completado' ? new Date(a.updated_at || a.fecha_asignacion) : new Date();
             const hours = Math.max(0, (end - start) / 36e5);
             rows.push({
                 type: 'assignment_time',
