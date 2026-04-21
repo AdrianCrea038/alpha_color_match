@@ -18,7 +18,7 @@ import { AdminView } from './views/adminView.js';
 import { ReportsView } from './views/reportsView.js';
 import { DashboardView } from './views/dashboardView.js';
 import { LinearizationValidatorView } from './views/linearizationValidatorView.js';
-import { supabase } from './core/supabaseClient.js';
+import { supabase, getAllMasterNks, getCustomValidColorNames } from './core/supabaseClient.js';
 
 class AlphaColorMatch {
     constructor() {
@@ -56,6 +56,7 @@ class AlphaColorMatch {
         
         this.updateUIForUser();
         this.loadSavedState();
+        await this.loadMasterData();
         this.initViews();
         this.initMenuNavigation();
         this.bindEvents();
@@ -90,6 +91,20 @@ class AlphaColorMatch {
         }
         
         console.log('✅ Alpha Color Match iniciado');
+    }
+
+    async loadMasterData() {
+        try {
+            // Cargar NKs maestros
+            window.ALL_MASTER_NKS = await getAllMasterNks();
+            // Cargar nombres de colores válidos
+            window.ALL_VALID_COLOR_NAMES = await getCustomValidColorNames();
+            console.log(`📡 Catálogos cargados: ${window.ALL_MASTER_NKS.length} NKs y ${window.ALL_VALID_COLOR_NAMES.length} nombres.`);
+        } catch (error) {
+            console.error('❌ Error cargando catálogos:', error);
+            window.ALL_MASTER_NKS = [];
+            window.ALL_VALID_COLOR_NAMES = [];
+        }
     }
     
     loadSavedState() {
@@ -214,20 +229,34 @@ class AlphaColorMatch {
 
     async processFileWithValidation(file, fileType) {
         console.log(`📁 Procesando archivo ${fileType}: ${file.name}`);
-        const { records: rawRecords, fileName } = await loadFile(file, true); // keepDuplicates = true
+        const { records: rawRecords, fileName } = await loadFile(file, true); 
         
-        // 1. Detectar duplicados y mala nomenclatura
+        // 1. Calcular sugerencia de NK basado en lo predominante en el archivo
+        const nkCounts = {};
+        rawRecords.forEach(r => {
+            if (r.nk) {
+                const cleanNk = (r.nk || '').trim().toUpperCase();
+                nkCounts[cleanNk] = (nkCounts[cleanNk] || 0) + 1;
+            }
+        });
+        const suggestedNk = Object.entries(nkCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+
+        // 2. Detectar duplicados y mala nomenclatura básica
         const duplicateGroups = findDuplicateGroups(rawRecords);
         const hasParentheses = rawRecords.some(r => /\([^)]*\)/.test(r.name)); 
         
-        if (duplicateGroups.length > 0 || hasParentheses) {
-            showNotification('Auditoría de Archivo', `Se detectaron ${duplicateGroups.length} duplicados y problemas de formato. Iniciando asistente...`, 'info');
+        // 3. NUEVO: Detectar si faltan NKs según la tabla maestra
+        const masterNks = (window.ALL_MASTER_NKS || []).map(n => n.toUpperCase());
+        const hasMissingNks = rawRecords.some(r => !r.nk || (masterNks.length > 0 && !masterNks.includes(r.nk.toUpperCase())));
+
+        if (duplicateGroups.length > 0 || hasParentheses || hasMissingNks) {
+            showNotification('Auditoría de Archivo', `Se detectaron problemas que requieren su atención. Iniciando asistente...`, 'info');
         }
 
         let currentRecords = [...rawRecords];
         let duplicatesResolved = 0;
 
-        // 2. Resolver Duplicados
+        // 4. Resolver Duplicados
         if (duplicateGroups.length > 0) {
             const indicesToRemove = await showDuplicateModal(duplicateGroups);
             if (indicesToRemove.length > 0) {
@@ -236,30 +265,17 @@ class AlphaColorMatch {
             }
         }
 
-        // 3. Resolver Nombres Mal Escritos (usando el validador existente)
+        // 5. Resolver Nombres Mal Escritos y NKs Faltantes
         let correctionsApplied = 0;
         const onCorrection = (oldName, newName, reason) => {
             correctionsApplied++;
             this.saveCorrectionHistory(oldName, newName, reason);
         };
 
-        // Forzar validación si el nombre base O el NK tienen paréntesis
-        const recordsToValidate = currentRecords.map(r => {
-            if (/\([^)]*\)/.test(r.nk || '')) {
-                // Si el NK tiene paréntesis, lo movemos al nombre base para que el validador lo detecte
-                return {
-                    ...r,
-                    baseName: `${r.baseName} ${r.nk}`.trim(),
-                    nk: ''
-                };
-            }
-            return r;
-        });
-
-        const validationResult = await validateAndCorrectRecords(recordsToValidate, fileType, onCorrection);
+        const validationResult = await validateAndCorrectRecords(currentRecords, fileType, onCorrection, suggestedNk);
         
         if (validationResult.records.length === 0 && currentRecords.length > 0) {
-            return null; // El usuario canceló la validación
+            return null; // Cancelado
         }
 
         return {

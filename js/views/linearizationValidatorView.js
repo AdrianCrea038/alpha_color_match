@@ -1,6 +1,6 @@
-// js/views/linearizationValidatorView.js
-import { escapeHtml } from '../core/utils.js';
+import { escapeHtml, showNotification } from '../core/utils.js';
 import { loadFile } from '../modules/fileLoader.js';
+import { validateAndCorrectRecords } from '../modules/nameValidator.js';
 
 export class LinearizationValidatorView {
     constructor(app) {
@@ -158,7 +158,8 @@ export class LinearizationValidatorView {
             if (file) {
                 const { records } = await loadFile(file, true);
                 this.strictRecordsA = records;
-                this.container.querySelector('#strictFileAInfo .filename').textContent = file.name;
+                const infoA = this.container.querySelector('#strictFileAInfo .filename');
+                if (infoA) infoA.textContent = file.name;
                 this.checkStrictReady();
             }
         });
@@ -168,7 +169,8 @@ export class LinearizationValidatorView {
             if (file) {
                 const { records } = await loadFile(file, true);
                 this.strictRecordsB = records;
-                this.container.querySelector('#strictFileBInfo .filename').textContent = file.name;
+                const infoB = this.container.querySelector('#strictFileBInfo .filename');
+                if (infoB) infoB.textContent = file.name;
                 this.checkStrictReady();
             }
         });
@@ -388,6 +390,16 @@ export class LinearizationValidatorView {
             errors: []
         }));
 
+        // 0. Calcular NK predominante (sugerencia para corrección)
+        const nkCounts = {};
+        this.records.forEach(r => {
+            if (r.nk) {
+                const cleanNk = (r.nk || '').trim().toUpperCase();
+                nkCounts[cleanNk] = (nkCounts[cleanNk] || 0) + 1;
+            }
+        });
+        this.suggestedNk = Object.entries(nkCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+
         // 1. Duplicados de Nombre (Usando baseName para ignorar NKs)
         const nameCounts = {};
         this.records.forEach(r => {
@@ -415,6 +427,11 @@ export class LinearizationValidatorView {
             // Error de paréntesis (Buscamos en el nombre completo por si se extrajo como NK)
             if (parenRegex.test(fullName)) {
                 record.errors.push({ type: 'naming', message: 'Nomenclatura con paréntesis (...)' });
+            }
+
+            // Error de NK faltante
+            if (!record.nk) {
+                record.errors.push({ type: 'naming', message: 'Código NK faltante' });
             }
 
             // 3. Validación contra Base de Datos (Existencia y Cápsula usando baseName)
@@ -488,7 +505,7 @@ export class LinearizationValidatorView {
         // Abrir el modal de corrección interactiva (el mismo que en el comparador)
         const result = await validateAndCorrectRecords([record], 'linearization', (oldN, newN, reason) => {
             console.log(`Corregido en Linearización: ${oldN} -> ${newN}`);
-        });
+        }, this.suggestedNk);
 
         if (result.corrected && result.records.length > 0) {
             // Actualizar el registro original y re-validar todo el archivo

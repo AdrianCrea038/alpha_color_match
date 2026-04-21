@@ -10,24 +10,37 @@ export function extractNK(fullName) {
     
     // 1. Intentar encontrar el nombre oficial más largo primero
     const validNames = window.ALL_VALID_COLOR_NAMES || [];
-    // Ordenar por longitud descendente para encontrar el match más específico
     const sortedNames = [...validNames].sort((a, b) => b.length - a.length);
     
     for (const officialName of sortedNames) {
         if (normalized.toUpperCase().startsWith(officialName.toUpperCase())) {
-            // El resto es el NK
             const remaining = normalized.substring(officialName.length).trim();
             if (remaining) return remaining;
-            return null; // No hay nada después del nombre oficial
+            return null;
         }
     }
 
-    // 2. Fallback: Lógica original por regex si no se encuentra en la DB
-    const match = normalized.match(/\s+([A-Z0-9\-]+)$/i);
-    if (match && /^[A-Z0-9\-]{3,}$/i.test(match[1])) return match[1];
+    // 2. NUEVO: Intentar encontrar un código NK Maestro al final
+    const masterNks = window.ALL_MASTER_NKS || [];
+    const sortedMasterNks = [...masterNks].sort((a, b) => b.length - a.length);
     
-    const words = normalized.trim().split(/\s+/);
-    return words.length > 1 ? words[words.length - 1] : null;
+    for (const masterNk of sortedMasterNks) {
+        const pattern = new RegExp(`\\s+${masterNk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+        if (pattern.test(normalized)) {
+            return masterNk;
+        }
+    }
+
+    // 3. Fallback: Solo si parece un código alfanumérico real
+    const match = normalized.match(/\s+([A-Z0-9\-]+)$/i);
+    if (match) {
+        const possibleNk = match[1];
+        if (/[0-9]/.test(possibleNk) || /^(NK|T|RW|W|BG|WG)/i.test(possibleNk)) {
+            return possibleNk;
+        }
+    }
+    
+    return null;
 }
 
 export function extractBaseName(fullName) {
