@@ -8,35 +8,27 @@ export function extractNK(fullName) {
     if (!fullName) return null;
     const normalized = normalizeSpaces(fullName);
     
-    // 1. Intentar encontrar el nombre oficial más largo primero
-    const validNames = window.ALL_VALID_COLOR_NAMES || [];
-    const sortedNames = [...validNames].sort((a, b) => b.length - a.length);
-    
-    for (const officialName of sortedNames) {
-        if (normalized.toUpperCase().startsWith(officialName.toUpperCase())) {
-            const remaining = normalized.substring(officialName.length).trim();
-            if (remaining) return remaining;
-            return null;
-        }
+    // 1. Prioridad: Buscar si existe algún NK de la base de datos (con sus errores pegados)
+    const masterNks = (window.ALL_MASTER_NKS || []);
+    const sortedMaster = [...masterNks].sort((a, b) => b.length - a.length);
+
+    for (const master of sortedMaster) {
+        const escaped = master.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // Buscamos el NK rodeado de lo que sea, capturando paréntesis
+        const pattern = new RegExp(`(${escaped}(?:\\s*\\([^)]*\\))*)`, 'i');
+        const m = normalized.match(pattern);
+        if (m) return m[1].trim();
     }
 
-    // 2. NUEVO: Intentar encontrar un código NK Maestro al final
-    const masterNks = window.ALL_MASTER_NKS || [];
-    const sortedMasterNks = [...masterNks].sort((a, b) => b.length - a.length);
-    
-    for (const masterNk of sortedMasterNks) {
-        const pattern = new RegExp(`\\s+${masterNk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
-        if (pattern.test(normalized)) {
-            return masterNk;
-        }
-    }
-
-    // 3. Fallback: Solo si parece un código alfanumérico real
-    const match = normalized.match(/\s+([A-Z0-9\-]+)$/i);
-    if (match) {
-        const possibleNk = match[1];
-        if (/[0-9]/.test(possibleNk) || /^(NK|T|RW|W|BG|WG)/i.test(possibleNk)) {
-            return possibleNk;
+    // 2. Fallback Agresivo: Si no hay match en DB, buscar cualquier palabra que tenga números
+    // Empezamos desde el final que es lo más común
+    const words = normalized.split(/\s+/);
+    for (let i = words.length - 1; i >= 0; i--) {
+        const word = words[i];
+        const wordUpper = word.toUpperCase();
+        // Si empieza por NK o tiene números y al menos 3 caracteres, es nuestro NK
+        if (wordUpper.startsWith('NK') || (/[0-9]/.test(word) && word.length >= 2)) {
+            return word;
         }
     }
     
@@ -53,16 +45,21 @@ export function extractBaseName(fullName) {
     
     for (const officialName of sortedNames) {
         if (normalized.toUpperCase().startsWith(officialName.toUpperCase())) {
-            return officialName; // Retornamos el nombre con la cápsula oficial
+            const remaining = normalized.substring(officialName.length).trim();
+            if (!remaining) return officialName;
+            const onlyParens = /^(\s*\([^)]*\))+$/.test(remaining);
+            if (onlyParens) return officialName;
         }
     }
 
-    // 2. Fallback: Lógica original por regex
+    // 2. Fallback: Simplemente quitar el NK encontrado de la cadena original
     const nk = extractNK(normalized);
     if (!nk) return normalized;
     
-    const nkPattern = new RegExp(`\\s+${nk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
-    const base = normalized.replace(nkPattern, '').trim();
+    const escapedNk = nk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`(?:^|\\s)${escapedNk}(?:\\s|$)`, 'gi');
+    
+    let base = normalized.replace(pattern, ' ').trim();
     return normalizeSpaces(base);
 }
 

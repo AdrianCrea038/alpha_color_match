@@ -24,6 +24,12 @@
     border: 1px solid rgba(0, 229, 255, 0.2);
 }
 
+.nk-badge.invalid {
+    background: rgba(248, 113, 113, 0.1);
+    color: #f87171;
+    border: 1px solid #f87171;
+}
+
 .data-table tr.error-row td {
     border-bottom: 1px solid rgba(248, 113, 113, 0.2);
 }

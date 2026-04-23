@@ -267,7 +267,10 @@ export async function validateAndCorrectRecords(records, fileType, onCorrectionA
         
         correctedRecords[index].baseName = result.newBaseName;
         correctedRecords[index].name = result.newFullName;
-        correctedRecords[index].nk = result.newFullName.split(' ').pop().startsWith('NK') ? result.newFullName.split(' ').pop() : '';
+        
+        // Extraer NK de forma más robusta del nombre completo resultante
+        const extractedNk = result.newFullName.trim().split(' ').pop();
+        correctedRecords[index].nk = extractedNk && (extractedNk.toUpperCase().startsWith('NK') || /[0-9]/.test(extractedNk)) ? extractedNk : result.newNk;
         
         if (onCorrectionApplied) onCorrectionApplied(originalName, result.newFullName, result.reason);
         findAndCorrectInOtherArray(originalName, result.newBaseName, result.newFullName, fileType);

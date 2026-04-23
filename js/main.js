@@ -213,6 +213,13 @@ class AlphaColorMatch {
                 this.secondaryFileName = result.fileName;
                 this.updateFileInfo('secondary', result.fileName, this.secondaryData.length);
                 this.renderDataList('secondary', this.secondaryData);
+                
+                // Guardar estadísticas para el log de comparación
+                localStorage.setItem('lastFileLoadStats', JSON.stringify({
+                    corrections: result.correctionsApplied,
+                    duplicates: result.duplicatesResolved
+                }));
+
                 this.saveCurrentState();
                 
                 if (result.correctionsApplied > 0 || result.duplicatesResolved > 0) {
@@ -282,7 +289,8 @@ class AlphaColorMatch {
             records: validationResult.records,
             fileName,
             correctionsApplied,
-            duplicatesResolved
+            duplicatesResolved,
+            totalOriginal: rawRecords.length
         };
     }
     
@@ -307,6 +315,8 @@ class AlphaColorMatch {
         
         this.results = compareFiles(this.primaryData, this.secondaryData);
         console.log('📊 Resultados:', this.results.length);
+        
+        // Guardar métricas iniciales de la sesión (se actualizarán al exportar si es necesario)
         this.logComparisonSession();
         
         renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
@@ -399,7 +409,10 @@ class AlphaColorMatch {
             this.results, this.groupSelections, this.selectedPending, this.deletedPending,
             this.primaryData, this.secondaryData
         );
-        if (success) this.saveCurrentState();
+        if (success) {
+            this.logComparisonSession(); // Guardar estado final (colores agregados, etc)
+            this.saveCurrentState();
+        }
     }
     
     clearCache() {
@@ -582,9 +595,12 @@ class AlphaColorMatch {
         const unmatched = this.results.filter(item =>
             item.matchType === 'pending_primary' || item.matchType === 'pending_secondary'
         ).length;
-        const invalidCmyk = [...this.primaryData, ...this.secondaryData].filter(rec =>
-            !Array.isArray(rec.cmyk) || rec.cmyk.length < 4 || rec.cmyk.some(v => !Number.isFinite(v) || v < 0 || v > 100)
-        ).length;
+        
+        const addedColors = Array.from(this.selectedPending).filter(id => id.startsWith('pending_secondary')).length;
+        
+        // Recuperar contadores de la última carga de archivos
+        const lastCargas = JSON.parse(localStorage.getItem('lastFileLoadStats') || '{"corrections":0, "duplicates":0}');
+
         const entry = {
             id: `cmp_${Date.now()}`,
             createdAt: new Date().toISOString(),
@@ -592,8 +608,12 @@ class AlphaColorMatch {
             primaryFile: this.primaryFileName || 'principal',
             secondaryFile: this.secondaryFileName || 'secundario',
             unmatched,
-            invalidCmyk
+            addedColors,
+            corrections: lastCargas.corrections || 0,
+            duplicates: lastCargas.duplicates || 0,
+            totalRecords: this.primaryData.length + this.secondaryData.length
         };
+
         let logs = [];
         try {
             logs = JSON.parse(localStorage.getItem('comparisonReportLogs') || '[]');

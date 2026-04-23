@@ -360,10 +360,18 @@ export class LinearizationValidatorView {
 
         try {
             // Refrescar datos de la base de datos antes de validar
+            const { getAllMasterNks } = await import('../core/supabaseClient.js');
+            
+            console.log('📡 Refrescando datos maestros desde Supabase...');
+            const refreshPromises = [
+                getAllMasterNks().then(nks => window.ALL_MASTER_NKS = nks)
+            ];
+
             if (this.app.developmentView && this.app.developmentView.loadEquivalencyGroups) {
-                console.log('📡 Refrescando tabla de equivalencias desde Supabase...');
-                await this.app.developmentView.loadEquivalencyGroups();
+                refreshPromises.push(this.app.developmentView.loadEquivalencyGroups());
             }
+
+            await Promise.all(refreshPromises);
 
             const { records, fileName } = await loadFile(file, true); // Pasar true para mantener duplicados
             this.records = records;
@@ -375,7 +383,6 @@ export class LinearizationValidatorView {
             alert('Error al cargar el archivo: ' + error);
         }
     }
-
     updateFileInfo(name, count) {
         const info = this.container.querySelector('#linValidatorFileInfo');
         if (info) {
@@ -400,76 +407,64 @@ export class LinearizationValidatorView {
         });
         this.suggestedNk = Object.entries(nkCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
 
-        // 1. Conteos para validación en dos pasos
-        const nameCounts = {};       // Para detectar color repetido en distintas máquinas
-        const compositeCounts = {};  // Para detectar duplicados exactos (Error real)
-        
-        this.records.forEach(r => {
-            const bName = (r.baseName || '').toUpperCase().trim();
-            const nk = (r.nk || '').toUpperCase().trim();
-            const fullKey = `${bName}|${nk}`;
-            
-            nameCounts[bName] = (nameCounts[bName] || 0) + 1;
-            compositeCounts[fullKey] = (compositeCounts[fullKey] || 0) + 1;
-        });
-
-        // 2. Paréntesis (ej: "(2)", "(VERSIÓN)", "(COPIA)")
+        // 1. Herramientas de Limpieza y Mapas
         const parenRegex = /\([^)]*\)/;
-
-        // 3. Consistencia de Complementarios
-        const groupsInFile = {};
+        const cleanName = (name) => (name || '').replace(/\s*\([^)]*\)/g, '').toUpperCase().trim();
+        const masterNks = (window.ALL_MASTER_NKS || []).map(n => n.toUpperCase());
         const equivalenceMap = window.EQUIVALENCE_MAP || new Map();
+        const equivalencyRows = window.EQUIVALENCY_ROWS || [];
 
+        // Mapas para detección de duplicados y consistencia
+        const compositeCounts = {}; // Key: "NAME_CLEAN|NK_CLEAN"
+        const groupsInFile = {};    // Key: "GROUP_ID|NK_CLEAN"
+
+        // PRIMERA PASADA: Identificar y Categorizar
         results.forEach(record => {
+            const fullName = (record.name || '').trim();
             const bName = (record.baseName || '').trim();
             const bNameUpper = bName.toUpperCase();
-            const nkUpper = (record.nk || '').toUpperCase().trim();
-            const fullName = (record.name || '').trim();
+            const bNameClean = cleanName(bName);
+            const nkRaw = (record.nk || '').trim();
+            const nkUpper = nkRaw.toUpperCase();
 
-            // FLUJO DE DUPLICIDAD EN DOS PASOS:
-            const compositeKey = `${bNameUpper}|${nkUpper}`;
-            
-            if (compositeCounts[compositeKey] > 1) {
-                // NIVEL 1: Error Crítico (Rojo) - El mismo registro está dos veces
-                record.errors.push({ type: 'duplicate', message: 'Registro duplicado (Nombre y NK idénticos)' });
+            // --- A. VALIDACIÓN DE NK ---
+            if (!nkRaw) {
+                record.errors.push({ type: 'duplicate', message: 'ERROR CRÍTICO: Código NK faltante' });
+            } else {
+                // Verificar si el NK tiene paréntesis (No permitido en NK)
+                if (parenRegex.test(nkRaw)) {
+                    record.errors.push({ type: 'naming', message: 'NK con formato inválido (Tiene paréntesis)' });
+                }
+                // Verificar contra tabla maestra
+                if (!masterNks.includes(nkUpper)) {
+                    record.errors.push({ type: 'duplicate', message: `ERROR CRÍTICO: NK no reconocido ("${nkRaw}")` });
+                }
             }
 
-            // Error de paréntesis (Buscamos en el nombre completo por si se extrajo como NK)
+            // --- B. VALIDACIÓN DE PARÉNTESIS EN NOMBRE ---
             if (parenRegex.test(fullName)) {
-                record.errors.push({ type: 'naming', message: 'Nomenclatura con paréntesis (...)' });
+                record.errors.push({ type: 'naming', message: 'Nomenclatura con paréntesis (No permitida)' });
             }
 
-            // Error de NK faltante
-            if (!record.nk) {
-                record.errors.push({ type: 'naming', message: 'Código NK faltante' });
-            }
-
-            // 3. Validación contra Base de Datos (Existencia y Cápsula usando baseName)
-            const equivalencyRows = window.EQUIVALENCY_ROWS || [];
+            // --- C. VALIDACIÓN CONTRA BASE DE DATOS (NOMBRES VÁLIDOS) ---
             let foundInDb = false;
-            let exactCasingMatch = false;
-            let officialName = '';
-
             for (const row of equivalencyRows) {
                 for (let i = 1; i < row.length; i++) {
-                    const dbName = row[i];
-                    if (dbName.toUpperCase() === bNameUpper) {
+                    if (row[i].toUpperCase() === bNameUpper) {
                         foundInDb = true;
-                        officialName = dbName;
-                        if (dbName === bName) {
-                            exactCasingMatch = true;
-                        }
                         break;
                     }
                 }
                 if (foundInDb) break;
             }
-
             if (!foundInDb) {
                 record.errors.push({ type: 'naming', message: 'Nombre NO registrado en base de datos' });
             }
 
-            // Agrupar para consistencia (Agrupamos por Grupo + NK para permitir diferencias entre máquinas)
+            // --- D. PREPARAR DUPLICADOS Y CONSISTENCIA ---
+            const compositeKey = `${bNameClean}|${nkUpper}`;
+            compositeCounts[compositeKey] = (compositeCounts[compositeKey] || 0) + 1;
+
             const eqData = equivalenceMap.get(bNameUpper);
             if (eqData) {
                 const groupKey = `${eqData.groupId}|${nkUpper}`;
@@ -478,7 +473,22 @@ export class LinearizationValidatorView {
             }
         });
 
-        // Validar consistencia dentro de cada grupo (Filtrado por mismo NK)
+        // SEGUNDA PASADA: Aplicar errores de Duplicados y Consistencia
+        results.forEach(record => {
+            const bNameClean = cleanName(record.baseName);
+            const nkUpper = (record.nk || '').toUpperCase().trim();
+            const compositeKey = `${bNameClean}|${nkUpper}`;
+
+            // Error de Duplicado (Mismo Nombre + Mismo NK)
+            if (compositeCounts[compositeKey] > 1) {
+                record.errors.push({ 
+                    type: 'duplicate', 
+                    message: `Nombre duplicado en el mismo NK` 
+                });
+            }
+        });
+
+        // Validar consistencia dentro de cada grupo de equivalencia por NK
         for (const groupKey in groupsInFile) {
             const groupRecords = groupsInFile[groupKey];
             if (groupRecords.length > 1) {
@@ -492,10 +502,12 @@ export class LinearizationValidatorView {
                     const currentLab = (current.lab || []).map(v => Number(v).toFixed(2)).join('|');
 
                     if (firstCmyk !== currentCmyk || firstLab !== currentLab) {
-                        // Marcar todos los del grupo con error de consistencia (solo dentro de este NK)
                         groupRecords.forEach(r => {
                             if (!r.errors.some(e => e.type === 'consistency')) {
-                                r.errors.push({ type: 'consistency', message: 'Inconsistencia de valores en el mismo NK' });
+                                r.errors.push({ 
+                                    type: 'consistency', 
+                                    message: 'Inconsistencia de valores (Color equivalente con diferente fórmula en este NK)' 
+                                });
                             }
                         });
                         break;
@@ -543,7 +555,7 @@ export class LinearizationValidatorView {
         tableBody.innerHTML = this.results.map((record, index) => {
             let statusHtml = '<span style="color: #4ade80;"><i class="fas fa-check-circle"></i> Válido</span>';
             let rowClass = '';
-
+            
             if (record.errors.length > 0) {
                 rowClass = 'error-row';
                 const errorMessages = record.errors.map(e => {
@@ -572,8 +584,14 @@ export class LinearizationValidatorView {
             return `
                 <tr class="${rowClass}">
                     <td>${index + 1}</td>
-                    <td style="font-weight: 500;">${escapeHtml(record.baseName)}</td>
-                    <td><span class="nk-badge">${escapeHtml(record.nk || '-')}</span></td>
+                    <td style="font-weight: 500;">
+                        ${escapeHtml(record.name)}
+                    </td>
+                    <td>
+                        <span class="nk-badge ${!record.nk || record.errors.some(e => e.message.includes('NK')) ? 'invalid' : ''}">
+                            ${escapeHtml(record.nk || 'FALTANTE')}
+                        </span>
+                    </td>
                     <td style="font-family: monospace;">${cmykStr}</td>
                     <td style="font-family: monospace;">${labStr}</td>
                     <td>${statusHtml}</td>
