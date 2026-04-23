@@ -6,7 +6,8 @@ import { compareFiles } from './modules/comparator.js';
 import { renderResults } from './modules/resultsRenderer.js';
 import { exportResults } from './modules/exporter.js';
 import { clearAllCache, saveComparatorState, loadComparatorState } from './modules/cacheManager.js';
-import { showNotification } from './core/utils.js';
+import * as utils from './core/utils.js';
+window.utils = utils;
 import { findDuplicateGroups, showDuplicateModal } from './modules/duplicateHandler.js';
 
 // Importar vistas

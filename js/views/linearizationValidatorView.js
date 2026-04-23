@@ -11,6 +11,7 @@ export class LinearizationValidatorView {
         this.fileName = '';
         
         this.init();
+        window.linValidatorView = this;
     }
 
     init() {
@@ -25,7 +26,7 @@ export class LinearizationValidatorView {
         this.container.innerHTML = `
             <div class="palette-validator-container">
                 <div class="palette-validator-header">
-                    <h3><i class="fas fa-microscope"></i> Comprobación</h3>
+                    <h3><i class="fas fa-microscope"></i> Auditoría</h3>
                     <p style="font-size: 0.85rem; color: #9ca3af;">Auditoría de nombres duplicados, nomenclatura con paréntesis y consistencia de complementarios.</p>
                 </div>
 
@@ -48,6 +49,7 @@ export class LinearizationValidatorView {
                         <h4 style="color: #00e5ff; margin: 0;"><i class="fas fa-clipboard-check"></i> Resultados del Análisis</h4>
                         <div style="display: flex; gap: 1rem; align-items: center;">
                             <div id="linStatsBadges" style="display: flex; gap: 0.5rem;"></div>
+                            <button id="btnExportLin" class="btn-primary" style="font-size: 0.75rem; padding: 0.4rem 1rem; background: #10b981; border: none; display:none;"><i class="fas fa-download"></i> Exportar Corregido</button>
                             <button id="linResetBtn" class="btn-secondary" style="font-size: 0.75rem; padding: 0.4rem 0.8rem;"><i class="fas fa-sync-alt"></i> Nueva Validación</button>
                         </div>
                     </div>
@@ -148,6 +150,11 @@ export class LinearizationValidatorView {
             resetBtn.addEventListener('click', () => this.reset());
         }
 
+        const exportBtn = this.container.querySelector('#btnExportLin');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', () => this.exportCorrectedFile());
+        }
+
         // Comparación Estricta
         const inputA = this.container.querySelector('#strictFileA');
         const inputB = this.container.querySelector('#strictFileB');
@@ -198,11 +205,9 @@ export class LinearizationValidatorView {
         tbody.innerHTML = '';
         panel.style.display = 'block';
 
-        // Indexar por nombre completo (el nombre normalizado ya incluye el NK si venía en el texto)
         const mapA = new Map();
         this.strictRecordsA.forEach(r => {
             const key = r.name.toUpperCase().trim();
-            // Si hay duplicados del mismo nombre en el mismo archivo, tomamos el primero
             if (!mapA.has(key)) mapA.set(key, r);
         });
 
@@ -225,33 +230,19 @@ export class LinearizationValidatorView {
             let valB = recB ? `${recB.name} [NK: ${recB.nk || '-'}]` : '---';
 
             if (recA && recB) {
-                // 1. Comparar NK explícitamente
                 const nkA = (recA.nk || '').trim().toUpperCase();
                 const nkB = (recB.nk || '').trim().toUpperCase();
-                if (nkA !== nkB) {
-                    diffs.push(`NK Diferente: "${nkA || '-'}" vs "${nkB || '-'}"`);
-                }
+                if (nkA !== nkB) diffs.push(`NK Diferente: "${nkA || '-'}" vs "${nkB || '-'}"`);
 
-                // 2. Comparar CMYK (con precisión de 6 decimales para máxima rigurosidad)
                 const cmykA = (recA.cmyk || []).map(v => Number(v).toFixed(6));
                 const cmykB = (recB.cmyk || []).map(v => Number(v).toFixed(6));
-                
-                if (cmykA.join('/') !== cmykB.join('/')) {
-                    diffs.push(`CMYK Diferente: [${cmykA.join(' / ')}] vs [${cmykB.join(' / ')}]`);
-                }
+                if (cmykA.join('/') !== cmykB.join('/')) diffs.push(`CMYK Diferente`);
 
-                // 3. Comparar LAB (con precisión de 4 decimales)
                 const labA = (recA.lab || []).map(v => Number(v).toFixed(4));
                 const labB = (recB.lab || []).map(v => Number(v).toFixed(4));
-                
-                if (labA.join('/') !== labB.join('/')) {
-                    diffs.push(`LAB Diferente: [${labA.join(' / ')}] vs [${labB.join(' / ')}]`);
-                }
+                if (labA.join('/') !== labB.join('/')) diffs.push(`LAB Diferente`);
 
-                if (diffs.length > 0) {
-                    status = 'invalid';
-                    diffCount++;
-                }
+                if (diffs.length > 0) { status = 'invalid'; diffCount++; }
             } else if (recA) {
                 diffs.push('El color NO existe en el nuevo archivo');
                 status = 'missing';
@@ -261,357 +252,234 @@ export class LinearizationValidatorView {
                 status = 'additional';
                 diffCount++;
             }
-
             this.addStrictRow(tbody, valA, valB, diffs, status);
         });
 
         if (diffCount === 0) {
-            tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #4ade80; padding: 3rem; font-size: 1.1rem;">
-                <div style="font-size: 3rem; margin-bottom: 1rem;">✅</div>
-                <strong>¡ARCHIVOS IDÉNTICOS!</strong><br>
-                <span style="font-weight: normal; opacity: 0.8;">No se encontró ninguna diferencia en nombres, NK, CMYK ni LAB.</span>
-            </td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #4ade80; padding: 3rem; font-size: 1.1rem;">✅ ¡ARCHIVOS IDÉNTICOS!</td></tr>`;
         }
     }
 
     addStrictRow(tbody, valA, valB, diffs, status) {
         const row = document.createElement('tr');
-        
-        let statusLabel = 'IDÉNTICO';
-        let statusClass = 'valid';
-        let rowStyle = '';
-
-        if (status === 'invalid') {
-            statusLabel = 'DIFERENTE';
-            statusClass = 'invalid';
-            rowStyle = 'background: rgba(244, 63, 94, 0.05);';
-        } else if (status === 'missing') {
-            statusLabel = 'FALTANTE';
-            statusClass = 'invalid';
-            rowStyle = 'background: rgba(251, 191, 36, 0.05);';
-        } else if (status === 'additional') {
-            statusLabel = 'ADICIONAL';
-            statusClass = 'warning';
-            rowStyle = 'background: rgba(0, 229, 255, 0.05);';
-        }
-
-        const diffHtml = diffs.length > 0 
-            ? diffs.map(d => `<div style="margin-bottom: 4px; padding-left: 10px; border-left: 2px solid #f43f5e;"><i class="fas fa-exclamation-circle" style="font-size: 0.7rem;"></i> ${escapeHtml(d)}</div>`).join('')
-            : '<div style="color: #4ade80;"><i class="fas fa-check"></i> Sin diferencias</div>';
+        let statusLabel = status === 'valid' ? 'IDÉNTICO' : (status === 'missing' ? 'FALTANTE' : (status === 'additional' ? 'ADICIONAL' : 'DIFERENTE'));
+        let statusClass = status === 'valid' ? 'valid' : (status === 'additional' ? 'warning' : 'invalid');
 
         row.innerHTML = `
-            <td style="${rowStyle} font-size: 0.8rem; font-weight: 500; vertical-align: top;">${escapeHtml(valA)}</td>
-            <td style="${rowStyle} font-size: 0.8rem; font-weight: 500; vertical-align: top;">${escapeHtml(valB)}</td>
-            <td style="${rowStyle} font-size: 0.75rem; color: ${status === 'valid' ? '#4ade80' : '#f43f5e'}; vertical-align: top;">${diffHtml}</td>
-            <td style="${rowStyle} text-align: center; vertical-align: top;"><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+            <td style="font-size: 0.8rem; font-weight: 500;">${escapeHtml(valA)}</td>
+            <td style="font-size: 0.8rem; font-weight: 500;">${escapeHtml(valB)}</td>
+            <td style="font-size: 0.75rem; color: #f43f5e;">${diffs.join(', ')}</td>
+            <td style="text-align: center;"><span class="status-badge ${statusClass}">${statusLabel}</span></td>
         `;
         tbody.appendChild(row);
     }
 
     resetStrict() {
-        this.strictRecordsA = null;
-        this.strictRecordsB = null;
-        
-        const inputA = this.container.querySelector('#strictFileA');
-        const inputB = this.container.querySelector('#strictFileB');
-        if (inputA) inputA.value = '';
-        if (inputB) inputB.value = '';
-
-        const infoA = this.container.querySelector('#strictFileAInfo .filename');
-        const infoB = this.container.querySelector('#strictFileBInfo .filename');
-        if (infoA) infoA.textContent = 'No cargado';
-        if (infoB) infoB.textContent = 'No cargado';
-        
-        const btnRun = this.container.querySelector('#btnRunStrictCompare');
-        if (btnRun) btnRun.style.display = 'none';
-
-        const panel = this.container.querySelector('#strictResultsPanel');
-        if (panel) panel.style.display = 'none';
-
-        const tbody = this.container.querySelector('#strictResultsTableBody');
-        if (tbody) tbody.innerHTML = '';
-        
-        console.log('🧹 Comparación estricta reiniciada.');
+        this.strictRecordsA = null; this.strictRecordsB = null;
+        this.container.querySelector('#strictFileA').value = '';
+        this.container.querySelector('#strictFileB').value = '';
+        this.container.querySelector('#strictFileAInfo .filename').textContent = 'No cargado';
+        this.container.querySelector('#strictFileBInfo .filename').textContent = 'No cargado';
+        this.container.querySelector('#btnRunStrictCompare').style.display = 'none';
+        this.container.querySelector('#strictResultsPanel').style.display = 'none';
+        this.container.querySelector('#strictResultsTableBody').innerHTML = '';
     }
 
     reset() {
-        this.records = [];
-        this.results = [];
-        this.fileName = '';
-        
-        const fileInput = this.container.querySelector('#linValidatorFileInput');
-        if (fileInput) fileInput.value = '';
-
-        const resultsPanel = this.container.querySelector('#linResultsPanel');
-        const emptyState = this.container.querySelector('#linEmptyState');
+        this.records = []; this.results = []; this.fileName = '';
+        this.container.querySelector('#linValidatorFileInput').value = '';
+        this.container.querySelector('#linResultsPanel').style.display = 'none';
+        this.container.querySelector('#linEmptyState').style.display = 'block';
         const info = this.container.querySelector('#linValidatorFileInfo');
-
-        if (resultsPanel) resultsPanel.style.display = 'none';
-        if (emptyState) emptyState.style.display = 'block';
-        if (info) {
-            info.querySelector('.filename').textContent = 'Ningún archivo cargado';
-            info.querySelector('.record-count').textContent = '';
-        }
+        info.querySelector('.filename').textContent = 'Ningún archivo cargado';
+        info.querySelector('.record-count').textContent = '';
     }
 
     async handleFileLoad(event) {
         const file = event.target.files[0];
         if (!file) return;
-
         try {
-            // Refrescar datos de la base de datos antes de validar
             const { getAllMasterNks } = await import('../core/supabaseClient.js');
+            window.ALL_MASTER_NKS = await getAllMasterNks();
             
-            console.log('📡 Refrescando datos maestros desde Supabase...');
-            const refreshPromises = [
-                getAllMasterNks().then(nks => window.ALL_MASTER_NKS = nks)
-            ];
-
-            if (this.app.developmentView && this.app.developmentView.loadEquivalencyGroups) {
-                refreshPromises.push(this.app.developmentView.loadEquivalencyGroups());
-            }
-
-            await Promise.all(refreshPromises);
-
-            const { records, fileName } = await loadFile(file, true); // Pasar true para mantener duplicados
-            this.records = records;
+            const { records, fileName } = await loadFile(file, true);
+            this.records = records.map((r, i) => ({ ...r, _uid: `rec_${Date.now()}_${i}` }));
             this.fileName = fileName;
             this.updateFileInfo(fileName, records.length);
             this.performValidation();
         } catch (error) {
-            console.error('Error cargando archivo:', error);
-            alert('Error al cargar el archivo: ' + error);
+            alert('Error: ' + error);
         }
     }
+
     updateFileInfo(name, count) {
         const info = this.container.querySelector('#linValidatorFileInfo');
-        if (info) {
-            info.querySelector('.filename').textContent = name;
-            info.querySelector('.record-count').textContent = `${count} registros`;
-        }
+        info.querySelector('.filename').textContent = name;
+        info.querySelector('.record-count').textContent = `${count} registros`;
     }
 
     performValidation() {
-        const results = this.records.map(record => ({
-            ...record,
-            errors: []
-        }));
-
-        // 0. Calcular NK predominante (sugerencia para corrección)
-        const nkCounts = {};
-        this.records.forEach(r => {
-            if (r.nk) {
-                const cleanNk = (r.nk || '').trim().toUpperCase();
-                nkCounts[cleanNk] = (nkCounts[cleanNk] || 0) + 1;
-            }
-        });
-        this.suggestedNk = Object.entries(nkCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
-
-        // 1. Herramientas de Limpieza y Mapas
+        const results = this.records.map(record => ({ ...record, errors: [] }));
         const parenRegex = /\([^)]*\)/;
-        const cleanName = (name) => (name || '').replace(/\s*\([^)]*\)/g, '').toUpperCase().trim();
+        const { extractBaseName } = window.utils || {};
+        const cleanNameFn = (name) => {
+            if (typeof extractBaseName === 'function') return extractBaseName(name).toUpperCase();
+            return (name || '').replace(/\s*\([^)]*\)/g, '').toUpperCase().trim();
+        };
+
         const masterNks = (window.ALL_MASTER_NKS || []).map(n => n.toUpperCase());
-        const equivalenceMap = window.EQUIVALENCE_MAP || new Map();
-        const equivalencyRows = window.EQUIVALENCY_ROWS || [];
+        const groups = {}; 
 
-        // Mapas para detección de duplicados y consistencia
-        const compositeCounts = {}; // Key: "NAME_CLEAN|NK_CLEAN"
-        const groupsInFile = {};    // Key: "GROUP_ID|NK_CLEAN"
-
-        // PRIMERA PASADA: Identificar y Categorizar
         results.forEach(record => {
-            const fullName = (record.name || '').trim();
-            const bName = (record.baseName || '').trim();
-            const bNameUpper = bName.toUpperCase();
-            const bNameClean = cleanName(bName);
+            const bNameClean = cleanNameFn(record.name);
             const nkRaw = (record.nk || '').trim();
             const nkUpper = nkRaw.toUpperCase();
+            const groupKey = `${bNameClean}|${nkUpper || 'SIN_NK'}`;
+            
+            if (!groups[groupKey]) groups[groupKey] = { key: groupKey, baseName: bNameClean, nk: nkUpper, records: [], hasErrors: false };
+            groups[groupKey].records.push(record);
 
-            // --- A. VALIDACIÓN DE NK ---
-            if (!nkRaw) {
-                record.errors.push({ type: 'duplicate', message: 'ERROR CRÍTICO: Código NK faltante' });
-            } else {
-                // Verificar si el NK tiene paréntesis (No permitido en NK)
-                if (parenRegex.test(nkRaw)) {
-                    record.errors.push({ type: 'naming', message: 'NK con formato inválido (Tiene paréntesis)' });
+            if (!nkRaw) record.errors.push({ type: 'critical', message: 'NK Faltante' });
+            else if (parenRegex.test(nkRaw) || !masterNks.includes(nkUpper)) record.errors.push({ type: 'naming', message: 'NK Inválido' });
+            if (parenRegex.test(record.name)) record.errors.push({ type: 'naming', message: 'Nombre con paréntesis' });
+            if (record.errors.length > 0) groups[groupKey].hasErrors = true;
+        });
+
+        Object.values(groups).forEach(group => {
+            if (group.records.length > 1) {
+                group.hasErrors = true;
+                group.records.forEach(r => r.errors.push({ type: 'duplicate', message: 'Duplicado' }));
+                const firstCmyk = (group.records[0].cmyk || []).map(v => Number(v).toFixed(2)).join('|');
+                if (group.records.some(r => (r.cmyk || []).map(v => Number(v).toFixed(2)).join('|') !== firstCmyk)) {
+                    group.records.forEach(r => r.errors.push({ type: 'consistency', message: 'CMYK inconsistente' }));
                 }
-                // Verificar contra tabla maestra
-                if (!masterNks.includes(nkUpper)) {
-                    record.errors.push({ type: 'duplicate', message: `ERROR CRÍTICO: NK no reconocido ("${nkRaw}")` });
-                }
-            }
-
-            // --- B. VALIDACIÓN DE PARÉNTESIS EN NOMBRE ---
-            if (parenRegex.test(fullName)) {
-                record.errors.push({ type: 'naming', message: 'Nomenclatura con paréntesis (No permitida)' });
-            }
-
-            // --- C. VALIDACIÓN CONTRA BASE DE DATOS (NOMBRES VÁLIDOS) ---
-            let foundInDb = false;
-            for (const row of equivalencyRows) {
-                for (let i = 1; i < row.length; i++) {
-                    if (row[i].toUpperCase() === bNameUpper) {
-                        foundInDb = true;
-                        break;
-                    }
-                }
-                if (foundInDb) break;
-            }
-            if (!foundInDb) {
-                record.errors.push({ type: 'naming', message: 'Nombre NO registrado en base de datos' });
-            }
-
-            // --- D. PREPARAR DUPLICADOS Y CONSISTENCIA ---
-            const compositeKey = `${bNameClean}|${nkUpper}`;
-            compositeCounts[compositeKey] = (compositeCounts[compositeKey] || 0) + 1;
-
-            const eqData = equivalenceMap.get(bNameUpper);
-            if (eqData) {
-                const groupKey = `${eqData.groupId}|${nkUpper}`;
-                if (!groupsInFile[groupKey]) groupsInFile[groupKey] = [];
-                groupsInFile[groupKey].push(record);
             }
         });
 
-        // SEGUNDA PASADA: Aplicar errores de Duplicados y Consistencia
-        results.forEach(record => {
-            const bNameClean = cleanName(record.baseName);
-            const nkUpper = (record.nk || '').toUpperCase().trim();
-            const compositeKey = `${bNameClean}|${nkUpper}`;
-
-            // Error de Duplicado (Mismo Nombre + Mismo NK)
-            if (compositeCounts[compositeKey] > 1) {
-                record.errors.push({ 
-                    type: 'duplicate', 
-                    message: `Nombre duplicado en el mismo NK` 
-                });
-            }
-        });
-
-        // Validar consistencia dentro de cada grupo de equivalencia por NK
-        for (const groupKey in groupsInFile) {
-            const groupRecords = groupsInFile[groupKey];
-            if (groupRecords.length > 1) {
-                const first = groupRecords[0];
-                const firstCmyk = (first.cmyk || []).map(v => Number(v).toFixed(2)).join('|');
-                const firstLab = (first.lab || []).map(v => Number(v).toFixed(2)).join('|');
-
-                for (let i = 1; i < groupRecords.length; i++) {
-                    const current = groupRecords[i];
-                    const currentCmyk = (current.cmyk || []).map(v => Number(v).toFixed(2)).join('|');
-                    const currentLab = (current.lab || []).map(v => Number(v).toFixed(2)).join('|');
-
-                    if (firstCmyk !== currentCmyk || firstLab !== currentLab) {
-                        groupRecords.forEach(r => {
-                            if (!r.errors.some(e => e.type === 'consistency')) {
-                                r.errors.push({ 
-                                    type: 'consistency', 
-                                    message: 'Inconsistencia de valores (Color equivalente con diferente fórmula en este NK)' 
-                                });
-                            }
-                        });
-                        break;
-                    }
-                }
-            }
-        }
-
-        this.results = results;
-        window.linValidatorView = this;
+        this.conflictGroups = Object.values(groups).sort((a, b) => b.hasErrors - a.hasErrors || a.baseName.localeCompare(b.baseName));
         this.renderResults();
-    }
-
-    async correctRecord(index) {
-        const record = this.results[index];
-        const { validateAndCorrectRecords } = await import('../modules/nameValidator.js');
-        
-        // Abrir el modal de corrección interactiva (el mismo que en el comparador)
-        const result = await validateAndCorrectRecords([record], 'linearization', (oldN, newN, reason) => {
-            console.log(`Corregido en Linearización: ${oldN} -> ${newN}`);
-        }, this.suggestedNk);
-
-        if (result.corrected && result.records.length > 0) {
-            // Actualizar el registro original y re-validar todo el archivo
-            this.records[index] = result.records[0];
-            this.performValidation();
-        }
     }
 
     renderResults() {
         const resultsPanel = this.container.querySelector('#linResultsPanel');
-        const emptyState = this.container.querySelector('#linEmptyState');
         const tableBody = this.container.querySelector('#linResultsTableBody');
         const statsBadges = this.container.querySelector('#linStatsBadges');
+        const exportBtn = this.container.querySelector('#btnExportLin');
 
-        if (!tableBody || !resultsPanel || !emptyState) return;
-
-        emptyState.style.display = 'none';
+        this.container.querySelector('#linEmptyState').style.display = 'none';
         resultsPanel.style.display = 'block';
+        if (exportBtn) exportBtn.style.display = 'inline-block';
 
-        let duplicateCount = 0;
-        let namingCount = 0;
-        let consistencyCount = 0;
+        let errorGroupsCount = this.conflictGroups.filter(g => g.hasErrors).length;
+        statsBadges.innerHTML = `<span class="badge" style="color: ${errorGroupsCount > 0 ? '#f43f5e' : '#4ade80'};">${errorGroupsCount > 0 ? '⚠️ ' + errorGroupsCount + ' Conflictos' : '✅ Limpio'}</span>`;
 
-        tableBody.innerHTML = this.results.map((record, index) => {
-            let statusHtml = '<span style="color: #4ade80;"><i class="fas fa-check-circle"></i> Válido</span>';
-            let rowClass = '';
-            
-            if (record.errors.length > 0) {
-                rowClass = 'error-row';
-                const errorMessages = record.errors.map(e => {
-                    let icon = 'fa-exclamation-triangle';
-                    let color = '#fbbf24';
-                    
-                    if (e.type === 'duplicate') { 
-                        duplicateCount++;
-                        color = '#f87171'; icon = 'fa-copy'; 
-                    } else if (e.type === 'naming') {
-                        namingCount++;
-                        color = '#fbbf24'; icon = 'fa-font';
-                    } else if (e.type === 'consistency') {
-                        consistencyCount++;
-                        color = '#a78bfa'; icon = 'fa-layer-group';
-                    }
-                    
-                    return `<div style="color: ${color}; font-size: 0.75rem; margin-bottom: 2px;"><i class="fas ${icon}"></i> ${e.message}</div>`;
-                }).join('');
-                statusHtml = `<div class="error-container">${errorMessages}</div>`;
-            }
+        tableBody.innerHTML = '';
+        this.conflictGroups.forEach(group => {
+            if (group.hasErrors) this.renderConflictCard(tableBody, group);
+            else this.renderCleanRow(tableBody, group.records[0]);
+        });
+    }
 
-            const cmykStr = (record.cmyk || []).map(v => Number(v).toFixed(1)).join(' / ');
-            const labStr = (record.lab || []).map(v => Number(v).toFixed(1)).join(' / ');
+    renderConflictCard(container, group) {
+        const tr = document.createElement('tr');
+        const itemsHtml = group.records.map((r, i) => `
+            <div class="conflict-item" style="display: grid; grid-template-columns: 2fr 1fr 1fr; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); align-items: center;">
+                <div style="font-size: 0.8rem;"><strong>${escapeHtml(r.name)}</strong></div>
+                <div style="font-family: monospace; font-size: 0.75rem;">${(r.cmyk || []).map(v => Number(v).toFixed(1)).join('/')}</div>
+                <div style="display: flex; gap: 4px; justify-content: flex-end;">
+                    <button onclick="window.linValidatorView.applyDecision('${group.key}', '${r._uid}', 'keep')" class="btn-mini action-keep">💎 Usar</button>
+                    <button onclick="window.linValidatorView.applyDecision('${group.key}', '${r._uid}', 'edit')" class="btn-mini action-edit"><i class="fas fa-edit"></i></button>
+                    <button onclick="window.linValidatorView.applyDecision('${group.key}', '${r._uid}', 'delete')" class="btn-mini action-delete"><i class="fas fa-trash"></i></button>
+                </div>
+            </div>`).join('');
 
-            return `
-                <tr class="${rowClass}">
-                    <td>${index + 1}</td>
-                    <td style="font-weight: 500;">
-                        ${escapeHtml(record.name)}
-                    </td>
-                    <td>
-                        <span class="nk-badge ${!record.nk || record.errors.some(e => e.message.includes('NK')) ? 'invalid' : ''}">
-                            ${escapeHtml(record.nk || 'FALTANTE')}
-                        </span>
-                    </td>
-                    <td style="font-family: monospace;">${cmykStr}</td>
-                    <td style="font-family: monospace;">${labStr}</td>
-                    <td>${statusHtml}</td>
-                    <td>
-                        ${record.errors.length > 0 ? `
-                            <button onclick="window.linValidatorView.correctRecord(${index})" style="padding: 4px 8px; background: #ff007f; color: white; border: none; border-radius: 4px; cursor: pointer; transition: all 0.2s;" title="Corregir">
-                                <i class="fas fa-magic"></i>
-                            </button>
-                        ` : ''}
-                    </td>
-                </tr>
-            `;
-        }).join('');
+        tr.innerHTML = `<td colspan="7" style="padding: 0;">
+            <div class="conflict-card" style="border: 1px solid #f43f5e; margin: 5px; border-radius: 8px; overflow: hidden;">
+                <div style="background: rgba(244, 63, 94, 0.1); padding: 5px 10px; font-weight: bold; font-size: 0.8rem;">📦 GRUPO: ${escapeHtml(group.baseName)} | NK: ${escapeHtml(group.nk)}</div>
+                <div class="conflict-body">${itemsHtml}</div>
+            </div></td>`;
+        container.appendChild(tr);
+    }
 
-        // Stats Badges
-        statsBadges.innerHTML = `
-            ${duplicateCount > 0 ? `<span class="badge" style="background: rgba(248, 113, 113, 0.2); color: #f87171; border: 1px solid #f87171; padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.7rem;">${duplicateCount} Duplicados</span>` : ''}
-            ${namingCount > 0 ? `<span class="badge" style="background: rgba(251, 191, 36, 0.2); color: #fbbf24; border: 1px solid #fbbf24; padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.7rem;">${namingCount} Nomenclatura</span>` : ''}
-            ${consistencyCount > 0 ? `<span class="badge" style="background: rgba(167, 139, 250, 0.2); color: #a78bfa; border: 1px solid #a78bfa; padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.7rem;">Inconsistencias</span>` : ''}
-            ${(duplicateCount === 0 && namingCount === 0 && consistencyCount === 0) ? '<span class="badge" style="background: rgba(74, 222, 128, 0.2); color: #4ade80; border: 1px solid #4ade80; padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.7rem;">Archivo Limpio</span>' : ''}
+    renderCleanRow(container, record) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>—</td>
+            <td style="color: #4ade80;">${escapeHtml(record.name)}</td>
+            <td><span class="nk-badge">${escapeHtml(record.nk)}</span></td>
+            <td style="font-family: monospace; font-size: 0.8rem;">${(record.cmyk || []).map(v => Number(v).toFixed(1)).join('/')}</td>
+            <td style="font-family: monospace; font-size: 0.8rem;">${(record.lab || []).map(v => Number(v).toFixed(1)).join('/')}</td>
+            <td>✅ Válido</td>
+            <td><button onclick="window.linValidatorView.applyDecision(null, '${record._uid}', 'delete')" style="background:none; border:none; color:#f43f5e; cursor:pointer;"><i class="fas fa-trash"></i></button></td>
         `;
+        container.appendChild(tr);
+    }
+
+    async applyDecision(groupKey, uid, action) {
+        if (action === 'delete') {
+            if (confirm(`¿Eliminar registro?`)) { this.records = this.records.filter(r => r._uid !== uid); this.performValidation(); }
+        } else if (action === 'edit') {
+            const idx = this.records.findIndex(r => r._uid === uid);
+            if (idx !== -1) await this.correctRecord(idx);
+        } else if (action === 'keep') {
+            const group = this.conflictGroups.find(g => g.key === groupKey);
+            const record = group.records.find(r => r._uid === uid);
+            if (confirm(`¿Unificar grupo usando esta versión?`)) {
+                const official = { ...record };
+                official.name = group.baseName + (official.nk ? ` ${official.nk}` : '');
+                const uids = group.records.map(r => r._uid);
+                this.records = this.records.filter(r => !uids.includes(r._uid));
+                this.records.push(official);
+                this.performValidation();
+            }
+        }
+    }
+
+    async correctRecord(index) {
+        const record = this.records[index];
+        const { validateAndCorrectRecords } = await import('../modules/nameValidator.js');
+        const result = await validateAndCorrectRecords([record], 'linearization', null, (this.records.find(r => r.nk)?.nk || ''));
+        if (result.corrected && result.records.length > 0) { this.records[index] = { ...result.records[0], _uid: record._uid }; this.performValidation(); }
+    }
+
+    exportCorrectedFile() {
+        if (this.records.length === 0) return;
+
+        const today = new Date();
+        const dateStr = `${today.getMonth() + 1}/${today.getDate()}/${today.getFullYear()}`;
+        
+        // Formato CGATS.17 idéntico al de Comparación
+        let content = 'CGATS.17\n';
+        content += 'ORIGINATOR\t"ALPHA COLOR MATCH"\n';
+        content += 'FILE_DESCRIPTOR\t""\n';
+        content += `CREATED\t"${dateStr}"\n`;
+        content += 'NUMBER_OF_FIELDS\t9\n';
+        content += 'BEGIN_DATA_FORMAT\n';
+        content += 'SAMPLE_ID SAMPLE_NAME CMYK_C CMYK_M CMYK_Y CMYK_K LAB_L LAB_A LAB_B\n';
+        content += 'END_DATA_FORMAT\n';
+        content += `NUMBER_OF_SETS\t${this.records.length}\n`;
+        content += 'BEGIN_DATA\n\n';
+
+        this.records.forEach((item, index) => {
+            const counter = index + 1;
+            content += `${counter} "${item.name}" `;
+            content += `${item.cmyk[0].toFixed(6)} ${item.cmyk[1].toFixed(6)} `;
+            content += `${item.cmyk[2].toFixed(6)} ${item.cmyk[3].toFixed(6)} `;
+            content += `${item.lab[0].toFixed(6)} ${item.lab[1].toFixed(6)} ${item.lab[2].toFixed(6)}\n`;
+        });
+
+        content += '\nEND_DATA\n';
+
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = this.fileName || 'linearizacion_corregida.txt';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        showNotification('Exportado (CGATS.17)', `Formato idéntico a Comparación: ${link.download}`, 'success');
     }
 }

@@ -74,6 +74,54 @@
     transition: transform 0.5s ease;
 }
 
-#linResetBtn:hover i {
-    transform: rotate(180deg);
+/* Conflict Resolver UI */
+.conflict-card {
+    background: #161622;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.err-tag {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    margin-right: 4px;
+    font-weight: 600;
+}
+
+.err-tag.critical { background: rgba(244, 63, 94, 0.2); color: #f43f5e; border: 1px solid #f43f5e; }
+.err-tag.naming { background: rgba(251, 191, 36, 0.2); color: #fbbf24; border: 1px solid #fbbf24; }
+.err-tag.duplicate { background: rgba(248, 113, 113, 0.2); color: #f87171; border: 1px solid #f87171; }
+.err-tag.consistency { background: rgba(167, 139, 250, 0.2); color: #a78bfa; border: 1px solid #a78bfa; }
+
+.btn-mini {
+    padding: 4px 10px;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.action-keep { background: #10b981; color: white; }
+.action-keep:hover { background: #059669; transform: scale(1.05); }
+
+.action-edit { background: #3b82f6; color: white; }
+.action-edit:hover { background: #2563eb; transform: scale(1.05); }
+
+.action-delete { background: #f43f5e; color: white; }
+.action-delete:hover { background: #e11d48; transform: scale(1.05); }
+
+.conflict-item:hover {
+    background: rgba(255, 255, 255, 0.03);
 }
