@@ -679,9 +679,7 @@ class AlphaColorMatch {
                 if (item.dataset.view === viewName) item.classList.add('active');
             });
             
-            if (viewName === 'comparator') {
-                this.showTaskSelectorModal();
-            }
+            // Removido showTaskSelectorModal de aquí para evitar que salte al refrescar
             if (viewName === 'paletteValidator' && this.paletteValidatorView) {
                 this.paletteValidatorView.renderTable();
             }
@@ -721,6 +719,10 @@ class AlphaColorMatch {
             item.addEventListener('click', () => {
                 const viewName = item.dataset.view;
                 if (viewName && this.auth.hasPermission(viewName)) {
+                    // Solo mostrar el modal de modo si es clic manual en Comparar
+                    if (viewName === 'comparator') {
+                        this.showTaskSelectorModal();
+                    }
                     switchView(viewName);
                 }
             });
