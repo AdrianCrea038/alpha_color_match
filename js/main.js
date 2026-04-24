@@ -87,11 +87,11 @@ class AlphaColorMatch {
         
         if (this.primaryData.length > 0) {
             this.renderDataList('primary', this.primaryData);
-            this.updateFileInfo('primary', 'Datos cargados desde caché', this.primaryData.length);
+            this.updateFileInfo('primary', this.primaryFileName || 'Archivo Recuperado', this.primaryData.length);
         }
         if (this.secondaryData.length > 0) {
             this.renderDataList('secondary', this.secondaryData);
-            this.updateFileInfo('secondary', 'Datos cargados desde caché', this.secondaryData.length);
+            this.updateFileInfo('secondary', this.secondaryFileName || 'Archivo Recuperado', this.secondaryData.length);
         }
         if (this.results.length > 0) {
             renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
@@ -125,6 +125,8 @@ class AlphaColorMatch {
             this.deletedPending = saved.deletedPending;
             this.groupSelections = saved.groupSelections;
             this.manualGroupSelections = saved.manualGroupSelections;
+            this.primaryFileName = saved.primaryFileName || '';
+            this.secondaryFileName = saved.secondaryFileName || '';
         }
     }
     
@@ -132,7 +134,8 @@ class AlphaColorMatch {
         saveComparatorState(
             this.primaryData, this.secondaryData, this.results,
             this.selectedPending, this.deletedPending,
-            this.groupSelections, this.manualGroupSelections
+            this.groupSelections, this.manualGroupSelections,
+            this.primaryFileName, this.secondaryFileName
         );
     }
     
@@ -689,8 +692,8 @@ class AlphaColorMatch {
                 this.historyView.render();
             }
             if (viewName === 'assignment' && this.assignmentView) {
-                this.assignmentView.updateTxtList();
-                this.assignmentView.renderHistory();
+                this.assignmentView.loadTxtList();
+                this.assignmentView.loadAssignmentsFromSupabase();
             }
             if (viewName === 'reports' && this.reportsView) {
                 this.reportsView.updateFilters();

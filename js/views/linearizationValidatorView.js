@@ -18,10 +18,68 @@ export class LinearizationValidatorView {
         window.linValidatorView = this;
     }
 
+    saveToCache() {
+        try {
+            const data = {
+                records: this.records,
+                masterRecords: this.masterRecords,
+                comparisonResults: this.comparisonResults,
+                fileName: this.fileName,
+                activeFilter: this.activeFilter
+            };
+            const serialized = JSON.stringify(data);
+            localStorage.setItem('lin_auditor_cache', serialized);
+            console.log(`💾 Auditoría guardada (${(serialized.length / 1024).toFixed(1)} KB)`);
+        } catch (e) {
+            if (e.name === 'QuotaExceededError') {
+                window.showNotification('Memoria llena', 'El archivo es demasiado grande para guardarse en caché.', 'warning');
+            }
+            console.error('Error al guardar en cache:', e);
+        }
+    }
+
+    loadFromCache() {
+        const cached = localStorage.getItem('lin_auditor_cache');
+        if (!cached) return;
+
+        try {
+            const data = JSON.parse(cached);
+            this.records = data.records || [];
+            this.masterRecords = data.masterRecords || [];
+            this.comparisonResults = data.comparisonResults || [];
+            this.fileName = data.fileName || '';
+            this.activeFilter = data.activeFilter || null;
+
+            if (this.records.length > 0 || this.comparisonResults.length > 0) {
+                // Esperar a que el DOM esté listo
+                const checkInterval = setInterval(() => {
+                    const tableBody = this.container?.querySelector('#linResultsTableBody');
+                    if (tableBody) {
+                        clearInterval(checkInterval);
+                        if (this.comparisonResults.length > 0) {
+                            this.renderComparisonResults();
+                        } else {
+                            this.renderResults();
+                        }
+                        if (this.fileName) {
+                            const badge = this.container.querySelector('#linFileName1');
+                            if (badge) badge.innerHTML = `<i class="fas fa-file-alt"></i> ${this.fileName} <span style="font-size: 0.6rem; opacity: 0.7;">(Recuperado)</span>`;
+                        }
+                    }
+                }, 50);
+                // Limpiar después de 2 segundos si algo falla
+                setTimeout(() => clearInterval(checkInterval), 2000);
+            }
+        } catch (e) {
+            console.error('Error cargando cache de auditoría:', e);
+        }
+    }
+
     init() {
         this.container = document.getElementById('linearizationValidatorView');
         if (!this.container) return;
         this.render();
+        this.loadFromCache();
     }
 
     render() {
@@ -30,12 +88,41 @@ export class LinearizationValidatorView {
         this.container.innerHTML = `
             <style>
                 .row-success { background: rgba(16, 185, 129, 0.03); }
-                .row-error-red { background: rgba(244, 63, 94, 0.08); border-left: 4px solid #f43f5e; }
-                .row-error-pink { background: rgba(236, 72, 153, 0.08); border-left: 4px solid #ec4899; }
-                .row-error-purple { background: rgba(139, 92, 246, 0.08); border-left: 4px solid #8b5cf6; }
-                .row-error-orange { background: rgba(245, 158, 11, 0.08); border-left: 4px solid #f59e0b; }
-                .row-error-yellow { background: rgba(234, 179, 8, 0.08); border-left: 4px solid #eab308; }
-                .row-error-blue { background: rgba(59, 130, 246, 0.08); border-left: 4px solid #3b82f6; }
+                .row-error-red { background: rgba(244, 63, 94, 0.15); border-left: 8px solid #f43f5e; }
+                .row-error-pink { background: rgba(236, 72, 153, 0.15); border-left: 8px solid #ec4899; }
+                .row-error-purple { background: rgba(139, 92, 246, 0.15); border-left: 8px solid #8b5cf6; }
+                .row-error-orange { background: rgba(245, 158, 11, 0.15); border-left: 8px solid #f59e0b; }
+                .row-error-yellow { background: rgba(234, 179, 8, 0.15); border-left: 8px solid #eab308; }
+                .row-error-blue { background: rgba(59, 130, 246, 0.15); border-left: 8px solid #3b82f6; }
+                
+                .status-badge-solid {
+                    padding: 4px 12px;
+                    border-radius: 4px;
+                    font-size: 0.7rem;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                }
+                .status-badge-solid.valid { background: #10b981; color: #fff; }
+                .status-badge-solid.red { background: #f43f5e; color: #fff; }
+                .status-badge-solid.pink { background: #ec4899; color: #fff; }
+                .status-badge-solid.purple { background: #8b5cf6; color: #fff; }
+                .status-badge-solid.orange { background: #f59e0b; color: #000; }
+                .status-badge-solid.yellow { background: #eab308; color: #000; }
+                .status-badge-solid.blue { background: #3b82f6; color: #fff; }
+
+                .mismatch-val {
+                    color: #f43f5e;
+                    font-weight: 900;
+                    text-decoration: underline;
+                    text-shadow: 0 0 5px rgba(244, 63, 94, 0.5);
+                    background: rgba(244, 63, 94, 0.1);
+                    padding: 0 2px;
+                    border-radius: 2px;
+                }
                 
                 .stat-badge-mini {
                     padding: 4px 10px;
@@ -171,6 +258,26 @@ export class LinearizationValidatorView {
         `;
         
         this.bindEvents();
+
+        // RE-RENDERIZAR SI HAY DATOS EN CACHÉ
+        if (this.records.length > 0 || this.comparisonResults.length > 0) {
+            setTimeout(() => {
+                if (this.comparisonResults.length > 0) {
+                    this.renderComparisonResults();
+                    // Restaurar nombres en modo cíclico
+                    const mName = this.container.querySelector('#linMasterFileName');
+                    const sName = this.container.querySelector('#linSecondaryFileName');
+                    if (mName && this.masterRecords.length > 0) mName.textContent = "Cargado (Caché)";
+                    if (sName && this.records.length > 0) sName.textContent = "Cargado (Caché)";
+                } else {
+                    this.renderResults();
+                }
+                if (this.fileName) {
+                    const badge = this.container.querySelector('#linFileName1');
+                    if (badge) badge.innerHTML = `<i class="fas fa-file-alt"></i> ${this.fileName} <span style="font-size: 0.6rem; opacity: 0.7;">(Recuperado)</span>`;
+                }
+            }, 50);
+        }
     }
 
     bindEvents() {
@@ -233,6 +340,7 @@ export class LinearizationValidatorView {
         const { compareFiles } = await import('../modules/comparator.js');
         this.comparisonResults = compareFiles(this.masterRecords, this.records, 'ciclico');
         this.renderComparisonResults();
+        this.saveToCache();
     }
 
     renderComparisonResults() {
@@ -368,6 +476,7 @@ export class LinearizationValidatorView {
             
             this.container.querySelector('#linFileName1').textContent = this.fileName;
             await this.performValidation();
+            this.saveToCache();
             
             window.showNotification('Auditoría Completada', 'Se ha verificado contra el Maestro de la base de datos.', 'success');
         } catch (error) {
@@ -577,6 +686,7 @@ export class LinearizationValidatorView {
                     const filter = badge.dataset.filter;
                     this.activeFilter = (filter === 'all' || this.activeFilter === filter) ? null : filter;
                     this.renderResults();
+                    this.saveToCache();
                 };
             });
         }
@@ -608,14 +718,14 @@ export class LinearizationValidatorView {
                     return rec.cmyk.map((v, i) => {
                         const diff = Math.abs(v - (rec.masterCmyk[i] || 0)) > 0.0001;
                         const val = Number(v).toFixed(6);
-                        return diff ? `<span style="color: #f43f5e; font-weight: bold;">${val}</span>` : val;
+                        return diff ? `<span class="mismatch-val">${val}</span>` : val;
                     }).join(' / ');
                 }
                 if (rec.complementaryDiscrepancy && rec.groupRefCmyk) {
                     return rec.cmyk.map((v, i) => {
                         const diff = Math.abs(v - (rec.groupRefCmyk[i] || 0)) > 0.0001;
                         const val = Number(v).toFixed(6);
-                        return diff ? `<span style="color: #f43f5e; font-weight: bold;">${val}</span>` : val;
+                        return diff ? `<span class="mismatch-val">${val}</span>` : val;
                     }).join(' / ');
                 }
                 return rec.cmyk.map(v => Number(v).toFixed(6)).join(' / ');
@@ -625,29 +735,29 @@ export class LinearizationValidatorView {
             const labStr = (record.lab || []).map(v => Number(v).toFixed(1)).join(' / ');
             const nk = record.nk || '---';
             
-            let statusHtml = '<span style="color: #10b981; font-size: 0.75rem;"><i class="fas fa-check-circle"></i> Válido</span>';
+            let statusHtml = '<div class="status-badge-solid valid"><i class="fas fa-check-circle"></i> Válido</div>';
             let rowColorClass = 'row-success';
 
             if (record.isDuplicate) { 
-                statusHtml = '<span style="color: #f43f5e; font-size: 0.75rem;"><i class="fas fa-copy"></i> Duplicado</span>'; 
+                statusHtml = '<div class="status-badge-solid red"><i class="fas fa-copy"></i> Duplicado</div>'; 
                 rowColorClass = 'row-error-red';
             } else if (record.cmykDiscrepancy) {
-                statusHtml = '<span style="color: #ec4899; font-size: 0.75rem;"><i class="fas fa-database"></i> Diferencia vs Maestro</span>';
+                statusHtml = '<div class="status-badge-solid pink"><i class="fas fa-database"></i> Dif. Maestro</div>';
                 rowColorClass = 'row-error-pink';
             } else if (record.hasCmykRangeError) {
-                statusHtml = '<span style="color: #f43f5e; font-size: 0.75rem;"><i class="fas fa-exclamation-circle"></i> Valor CMYK > 100</span>';
+                statusHtml = '<div class="status-badge-solid red"><i class="fas fa-exclamation-circle"></i> Rango > 100</div>';
                 rowColorClass = 'row-error-red';
             } else if (record.complementaryDiscrepancy) {
-                statusHtml = '<span style="color: #8b5cf6; font-size: 0.75rem;"><i class="fas fa-project-diagram"></i> Diferencia en Complementarios</span>';
+                statusHtml = '<div class="status-badge-solid purple"><i class="fas fa-project-diagram"></i> Dif. Comp.</div>';
                 rowColorClass = 'row-error-purple';
             } else if (record.isInvalidName) { 
-                statusHtml = '<span style="color: #f59e0b; font-size: 0.75rem;"><i class="fas fa-book-dead"></i> No está en Catálogo</span>';
+                statusHtml = '<div class="status-badge-solid orange"><i class="fas fa-book-dead"></i> Catálogo</div>';
                 rowColorClass = 'row-error-orange';
             } else if (record.hasNumberedParentheses) {
-                statusHtml = '<span style="color: #eab308; font-size: 0.75rem;"><i class="fas fa-brackets-curly"></i> Nomenclatura (X)</span>';
+                statusHtml = '<div class="status-badge-solid yellow"><i class="fas fa-brackets-curly"></i> Nom. (X)</div>';
                 rowColorClass = 'row-error-yellow';
             } else if (record.isMissingNk) { 
-                statusHtml = '<span style="color: #3b82f6; font-size: 0.75rem;"><i class="fas fa-fingerprint"></i> Falta código NK</span>'; 
+                statusHtml = '<div class="status-badge-solid blue"><i class="fas fa-fingerprint"></i> Sin NK</div>'; 
                 rowColorClass = 'row-error-blue';
             }
 
@@ -694,10 +804,13 @@ export class LinearizationValidatorView {
                 if (confirm('¿Seguro que desea eliminar este registro duplicado?')) {
                     this.records.splice(idx, 1);
                     this.performValidation();
+                    this.saveToCache();
                     window.showNotification('Eliminado', 'Registro eliminado correctamente.', 'info');
                 }
             };
         });
+
+        this.saveToCache();
 
         const exportBtn = this.container.querySelector('#btnExportLin');
         if (exportBtn) exportBtn.disabled = errorCount > 0;
@@ -707,6 +820,9 @@ export class LinearizationValidatorView {
         this.records = [];
         this.masterRecords = [];
         this.comparisonResults = [];
+        this.fileName = '';
+        this.activeFilter = null;
+        localStorage.removeItem('lin_auditor_cache');
         this.render();
     }
 
