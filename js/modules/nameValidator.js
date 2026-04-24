@@ -9,25 +9,30 @@ export function setAppInstance(app) {
     appInstance = app;
 }
 
-/**
- * Obtiene el Set de nombres válidos actualizado desde window o constants
- */
 function getValidNamesSet() {
     const names = window.ALL_VALID_COLOR_NAMES || [];
     return new Set(names.map(name => normalizeSpaces(name).toUpperCase()));
 }
 
-export function isValidColorName(baseName) {
-    if (!baseName) return false;
+export function isValidColorName(baseName, fullName = '') {
+    const textToTest = fullName || baseName;
+    if (!textToTest) return false;
     
-    // 1. Si contiene paréntesis, es inválido
-    if (/\([^)]*\)/.test(baseName)) return false;
+    // 1. Detección estricta de paréntesis en cualquier parte
+    if (/\([^)]*\)/.test(textToTest)) {
+        console.warn(`⚠️ Paréntesis detectados en: "${textToTest}"`);
+        return false;
+    }
     
-    // 2. Si contiene un código NK al final (ej: "BLUE NK123"), es inválido para linearización
+    // 2. No permitir códigos NK pegados al nombre
     if (/\s+NK[A-Z0-9\-]+$/i.test(baseName.trim())) return false;
     
     const validSet = getValidNamesSet();
     const normalized = normalizeSpaces(baseName).toUpperCase();
+    
+    // Si no hay catálogo cargado, solo validamos formato (paréntesis)
+    if (validSet.size === 0) return true;
+    
     return validSet.has(normalized);
 }
 
@@ -73,7 +78,7 @@ function findAndCorrectInOtherArray(originalName, newBaseName, newFullName, curr
     }
 }
 
-function showCorrectionModal(colorData, index, totalInvalid, suggestedNk = '') {
+function showCorrectionModal(colorData, index, totalInvalid, suggestedNk = '', existingRecords = []) {
     return new Promise((resolve) => {
         const modal = document.createElement('div');
         modal.className = 'modal-overlay active';
@@ -84,42 +89,61 @@ function showCorrectionModal(colorData, index, totalInvalid, suggestedNk = '') {
         
         const renderSuggestions = (filterText) => {
             const suggestionsList = modal.querySelector('#suggestionsList');
-            const filterLower = (filterText || '').toLowerCase();
+            const cleanQuery = (filterText || '').replace(/\([^)]*\)/g, '').trim().toUpperCase();
+            const filterLower = cleanQuery.toLowerCase();
             
-            const matches = allNames.filter(name =>
-                name.toLowerCase().includes(filterLower)
-            ).slice(0, 15);
+            // Búsqueda inteligente: coincidencias por subcadena
+            let matches = allNames.filter(name => {
+                const nameUpper = name.toUpperCase();
+                return nameUpper.includes(cleanQuery) || cleanQuery.includes(nameUpper);
+            }).sort((a, b) => {
+                // Prioridad: Que empiece por el texto buscado
+                const aStarts = a.toUpperCase().startsWith(cleanQuery);
+                const bStarts = b.toUpperCase().startsWith(cleanQuery);
+                if (aStarts && !bStarts) return -1;
+                if (!aStarts && bStarts) return 1;
+                return a.length - b.length;
+            }).slice(0, 10);
             
             if (matches.length === 0) {
                 const escapedInput = escapeHtml(filterText.trim().toUpperCase());
                 suggestionsList.innerHTML = `
-                    <div style="padding: 0.5rem; color: #f87171; text-align: center;">No hay coincidencias exactas</div>
-                    <div class="suggestion-item add-new-name" data-value="${escapedInput}" style="padding: 0.6rem 0.8rem; cursor: pointer; border-top: 1px solid #2d3748; color: #4ade80;">
-                        ➕ Usar "${escapedInput}" (temporal o nuevo)
+                    <div style="padding: 0.8rem; color: #f87171; text-align: center; font-size: 0.85rem; background: rgba(248,113,113,0.05);">
+                        ⚠️ No se encontró una coincidencia clara en el catálogo.
+                    </div>
+                    <div class="suggestion-item add-new-name" data-value="${escapedInput}" style="padding: 0.8rem 1rem; cursor: pointer; border-top: 1px solid rgba(255,255,255,0.1); color: #4ade80; font-weight: bold;">
+                        ➕ REGISTRAR COMO NUEVO: "${escapedInput}"
                     </div>
                 `;
-                suggestionsList.querySelector('.add-new-name').onclick = () => {
-                    selectedValue = escapedInput;
+            } else {
+                const header = `<div style="padding: 0.5rem 1rem; font-size: 0.7rem; color: #3b82f6; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid rgba(59,130,246,0.2); background: rgba(59,130,246,0.05);">Sugerencias del Sistema</div>`;
+                
+                suggestionsList.innerHTML = header + matches.map(name => `
+                    <div class="suggestion-item" data-value="${escapeHtml(name)}" style="padding: 0.8rem 1rem; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); color: white; display: flex; justify-content: space-between; align-items: center;">
+                        <span><i class="fas fa-magic" style="color: #3b82f6; margin-right: 8px;"></i> ${escapeHtml(name)}</span>
+                        <small style="color: #6b7280; font-size: 0.7rem;">Click para aplicar</small>
+                    </div>
+                `).join('');
+            }
+
+            // Aplicar estilos y eventos
+            const style = document.createElement('style');
+            style.innerHTML = `
+                .suggestion-item:hover { background: rgba(59, 130, 246, 0.4) !important; }
+                .suggestion-item:active { transform: scale(0.98); }
+            `;
+            document.head.appendChild(style);
+
+            suggestionsList.querySelectorAll('.suggestion-item').forEach(item => {
+                item.onclick = () => {
+                    selectedValue = item.dataset.value;
                     modal.querySelector('#searchInput').value = selectedValue;
                     suggestionsList.style.display = 'none';
                     validateForm();
+                    window.showNotification('Sugerencia Aplicada', `Se ha seleccionado: ${selectedValue}`, 'info');
                 };
-            } else {
-                suggestionsList.innerHTML = matches.map(name => `
-                    <div class="suggestion-item" data-value="${escapeHtml(name)}" style="padding: 0.5rem 0.8rem; cursor: pointer; border-bottom: 1px solid #2d3748;">
-                        🔍 ${name}
-                    </div>
-                `).join('');
-                
-                suggestionsList.querySelectorAll('.suggestion-item').forEach(item => {
-                    item.onclick = () => {
-                        selectedValue = item.dataset.value;
-                        modal.querySelector('#searchInput').value = selectedValue;
-                        suggestionsList.style.display = 'none';
-                        validateForm();
-                    };
-                });
-            }
+            });
+            
             suggestionsList.style.display = 'block';
         };
         
@@ -128,10 +152,30 @@ function showCorrectionModal(colorData, index, totalInvalid, suggestedNk = '') {
             const reasonSelect = modal.querySelector('#correctionReason');
             const searchVal = modal.querySelector('#searchInput').value.trim();
             const nkVal = modal.querySelector('#manualNkInput').value.trim();
+            const duplicateWarning = modal.querySelector('#duplicateWarning');
             
-            const isValid = searchVal !== '' && nkVal !== '' && reasonSelect.value !== '';
+            const currentName = searchVal.toUpperCase();
+            const currentNk = nkVal.toUpperCase();
+            const newFullName = currentNk ? `${currentName} ${currentNk}` : currentName;
+            
+            const isDuplicate = existingRecords.some(r => {
+                if (r._uid === colorData._uid) return false;
+                const rClean = (r.name || '').replace(/\s*\([^)]*\)/g, '').toUpperCase().trim();
+                const rNk = (r.nk || '').trim().toUpperCase();
+                return (rNk ? `${rClean} ${rNk}` : rClean) === newFullName;
+            });
+
+            if (isDuplicate) {
+                duplicateWarning.style.display = 'block';
+                duplicateWarning.innerHTML = `⚠️ ¡ATENCIÓN! Este nombre ya existe en el archivo.<br><small>No se permiten duplicados. Por favor, corrija el nombre o NK.</small>`;
+            } else {
+                duplicateWarning.style.display = 'none';
+            }
+            
+            const isValid = searchVal !== '' && nkVal !== '' && reasonSelect.value !== '' && !isDuplicate;
             applyBtn.disabled = !isValid;
             applyBtn.style.opacity = isValid ? '1' : '0.5';
+            applyBtn.style.cursor = isValid ? 'pointer' : 'not-allowed';
         };
         
         modal.innerHTML = `
@@ -141,140 +185,108 @@ function showCorrectionModal(colorData, index, totalInvalid, suggestedNk = '') {
                     <button class="modal-close" style="color: white; background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
                 </div>
                 <div class="modal-body" style="padding: 1.5rem;">
+                    <div id="duplicateWarning" style="display:none; background: rgba(244, 63, 94, 0.2); color: #f43f5e; padding: 0.8rem; border-radius: 0.5rem; margin-bottom: 1rem; border: 1px solid #f43f5e; font-weight: bold; text-align: center;"></div>
                     <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; border-left: 4px solid #ff007f;">
                         <p style="margin:0 0 0.5rem;"><strong>Valor Original:</strong> <span style="color:#ff007f;">${escapeHtml(colorData.name)}</span></p>
-                        <p style="margin:0;"><strong>Estado:</strong> <span style="color: #fbbf24;">${!colorData.nk ? '⚠️ Código NK Faltante' : '✅ NK Detectado'}</span></p>
                     </div>
-
-                    <div class="form-group" style="margin-bottom: 1.2rem;">
-                        <label style="display:block; margin-bottom:0.4rem; color:#9ca3af; font-size: 0.85rem;">Nombre Correcto del Color:</label>
-                        <div style="position:relative;">
-                            <input type="text" id="searchInput" placeholder="Buscar nombre oficial..." autocomplete="off" style="width:100%; padding:0.7rem; background:#0c0c12; border:1px solid #2d3748; border-radius:0.5rem; color:white;">
-                        </div>
-                        <div id="suggestionsList" style="max-height: 150px; overflow-y: auto; margin-top: 0.25rem; border-radius: 0.5rem; background: #1a1a2a; border: 1px solid #4b5563; display: none; position: absolute; z-index: 100; width: calc(100% - 3rem); box-shadow: 0 10px 25px rgba(0,0,0,0.5);"></div>
+                    <div class="form-group" style="margin-bottom: 1.2rem; position: relative;">
+                        <label style="display:block; margin-bottom:0.4rem; color:#9ca3af; font-size: 0.85rem;">Nombre Correcto:</label>
+                        <input type="text" id="searchInput" placeholder="Nombre oficial..." style="width:100%; padding:0.7rem; background:#0c0c12; border:1px solid #2d3748; border-radius:0.5rem; color:white;">
+                        <div id="suggestionsList" style="max-height: 200px; overflow-y: auto; margin-top: 2px; border-radius: 0.5rem; background: #1f2937; border: 1px solid #3b82f6; display: none; position: absolute; z-index: 10000; width: 100%; box-shadow: 0 10px 25px rgba(0,0,0,0.6); color: white;"></div>
                     </div>
-
                     <div class="form-group" style="margin-bottom: 1.2rem;">
                         <label style="display:block; margin-bottom:0.4rem; color:#9ca3af; font-size: 0.85rem;">Código NK:</label>
-                        <div style="display: flex; gap: 0.5rem; align-items: center;">
-                            <input type="text" id="manualNkInput" placeholder="Ej: NK123" style="flex: 1; padding:0.7rem; background:#0c0c12; border:1px solid #2d3748; border-radius:0.5rem; color:#00e5ff; font-weight: bold;">
-                            ${suggestedNk ? `<span title="Sugerencia basada en el archivo" style="background: #b45309; color: white; padding: 0.2rem 0.5rem; border-radius: 1rem; font-size: 0.65rem; cursor: help;">💡 SUGERIDO</span>` : ''}
-                        </div>
-                        ${suggestedNk ? `<p style="margin: 0.3rem 0 0; font-size: 0.75rem; color: #fbbf24;">Sugerencia detectada: <strong>${suggestedNk}</strong></p>` : ''}
+                        <input type="text" id="manualNkInput" placeholder="NK123" style="width:100%; padding:0.7rem; background:#0c0c12; border:1px solid #2d3748; border-radius:0.5rem; color:#00e5ff; font-weight: bold;">
                     </div>
-
-                    <div class="form-group" style="margin-bottom: 1.5rem;">
-                        <label style="display:block; margin-bottom:0.4rem; color:#9ca3af; font-size: 0.85rem;">Motivo de la corrección:</label>
+                    <div class="form-group">
+                        <label style="display:block; margin-bottom:0.4rem; color:#9ca3af; font-size: 0.85rem;">Motivo:</label>
                         <select id="correctionReason" style="width:100%; padding:0.7rem; background:#0c0c12; border:1px solid #2d3748; border-radius:0.5rem; color:white;">
-                            <option value="" disabled>-- Selecciona --</option>
-                            <option value="Falta NK" ${!colorData.nk ? 'selected' : ''}>1. Falta NK / Código de tela</option>
-                            <option value="Mal escrito nombre" ${colorData.nk ? 'selected' : ''}>2. Nombre mal escrito / Paréntesis</option>
-                            <option value="Limpieza de NK">3. Limpieza de NK en nombre</option>
-                            <option value="Error en el CYMK">4. Error en el CYMK</option>
+                            <option value="Mal escrito nombre" selected>Nombre mal escrito / Paréntesis</option>
+                            <option value="Falta NK">Falta NK</option>
+                            <option value="Limpieza de NK">Limpieza de NK en nombre</option>
                         </select>
                     </div>
                 </div>
                 <div class="modal-buttons" style="display: flex; gap: 1rem; justify-content: flex-end; padding: 1.5rem; background: rgba(0,0,0,0.2); border-top: 1px solid #2d3748;">
-                    <button class="btn-secondary cancel-correction" style="padding: 0.7rem 1.2rem; cursor:pointer; border-radius: 0.5rem; border: 1px solid #4b5563; background: transparent; color: white;">Cancelar</button>
-                    <button class="btn-primary apply-correction" style="padding: 0.7rem 1.5rem; background:#ff007f !important; cursor:pointer; border: none; border-radius: 0.5rem; color: white; font-weight: bold; transition: all 0.2s;">
-                        APLICAR CAMBIOS
-                    </button>
+                    <button class="cancel-correction" style="padding: 0.7rem 1.2rem; cursor:pointer; background: transparent; color: white; border: 1px solid #4b5563; border-radius: 0.5rem;">Cancelar</button>
+                    <button class="apply-correction" style="padding: 0.7rem 1.5rem; background:#ff007f; color: white; border: none; border-radius: 0.5rem; font-weight: bold;">APLICAR</button>
                 </div>
             </div>
         `;
         
         document.body.appendChild(modal);
-        
         const searchInput = modal.querySelector('#searchInput');
         const manualNkInput = modal.querySelector('#manualNkInput');
-        const reasonSelect = modal.querySelector('#correctionReason');
         const applyBtn = modal.querySelector('.apply-correction');
         
-        // PRE-LLENAR DATOS
         searchInput.value = colorData.baseName || '';
         manualNkInput.value = colorData.nk || suggestedNk || '';
-        renderSuggestions(searchInput.value);
         
-        searchInput.addEventListener('input', (e) => {
-            renderSuggestions(e.target.value);
-            validateForm();
-        });
-
+        const updateAll = () => { renderSuggestions(searchInput.value); validateForm(); };
+        searchInput.addEventListener('input', updateAll);
         manualNkInput.addEventListener('input', validateForm);
-        reasonSelect.addEventListener('change', validateForm);
+        modal.querySelector('#correctionReason').addEventListener('change', validateForm);
         
-        // Ejecución inicial de validación
-        validateForm();
-        
-        const closeModal = () => {
-            modal.classList.remove('active');
-            setTimeout(() => modal.remove(), 300);
-        };
-        
-        modal.querySelector('.modal-close').onclick = () => { closeModal(); resolve(null); };
-        modal.querySelector('.cancel-correction').onclick = () => { closeModal(); resolve(null); };
-        
+        // Ejecutar búsqueda inicial inmediatamente al abrir
+        updateAll();
+
+        modal.querySelector('.modal-close').onclick = () => { modal.remove(); resolve(null); };
+        modal.querySelector('.cancel-correction').onclick = () => { modal.remove(); resolve(null); };
         applyBtn.onclick = async () => {
-            const finalBaseName = (selectedValue || searchInput.value.trim()).toUpperCase();
+            const finalBase = (selectedValue || searchInput.value.trim()).toUpperCase();
             const finalNk = manualNkInput.value.trim().toUpperCase();
-            
-            let exactMatch = allNames.find(n => n.toUpperCase() === finalBaseName);
-            
-            if (!exactMatch) {
-                if (confirm(`⚠️ "${finalBaseName}" no está en la lista oficial.\n\n¿Desea agregarlo a la base de datos permanentemente?`)) {
-                    const res = await addCustomValidColorName(finalBaseName, appInstance?.auth?.getCurrentUser()?.username || 'usuario');
-                    if (res.success) addNameToLocalCatalog(finalBaseName);
+            const newFull = finalNk ? `${finalBase} ${finalNk}` : finalBase;
+
+            // --- RESTAURADO: Preguntar si se agrega a la base de datos ---
+            const validSet = getValidNamesSet();
+            if (finalBase && !validSet.has(finalBase)) {
+                if (confirm(`⚠️ "${finalBase}" no está en la lista oficial.\n\n¿Desea agregarlo a la base de datos permanentemente?`)) {
+                    const res = await addCustomValidColorName(finalBase, appInstance?.auth?.getCurrentUser()?.username || 'usuario');
+                    if (res && res.success) {
+                        // Actualizar catálogo local inmediatamente
+                        if (!window.ALL_VALID_COLOR_NAMES) window.ALL_VALID_COLOR_NAMES = [];
+                        window.ALL_VALID_COLOR_NAMES.push(finalBase);
+                        window.showNotification('Éxito', `"${finalBase}" agregado al catálogo oficial`, 'success');
+                    }
                 }
-                exactMatch = finalBaseName;
             }
-            
-            const newFullName = finalNk ? `${exactMatch} ${finalNk}` : exactMatch;
-            closeModal();
-            resolve({ newBaseName: exactMatch, newNk: finalNk, newFullName, reason: reasonSelect.value });
+            // ----------------------------------------------------------
+
+            modal.remove();
+            resolve({ newBaseName: finalBase, newNk: finalNk, newFullName: newFull, reason: modal.querySelector('#correctionReason').value });
         };
     });
 }
 
-export async function validateAndCorrectRecords(records, fileType, onCorrectionApplied, suggestedNk = '') {
+export async function validateAndCorrectRecords(records, fileType, onCorrectionApplied, suggestedNk = '', contextRecords = null) {
     await ensureValidColorCatalogLoaded();
     const correctedRecords = [...records];
     const correctionsNeeded = [];
+    const duplicateContext = contextRecords || correctedRecords;
     
     for (let i = 0; i < correctedRecords.length; i++) {
         const record = correctedRecords[i];
-        const isNameInvalid = !isValidColorName(record.baseName);
-        
-        // Validación de NK contra tabla maestra
-        const masterNks = (window.ALL_MASTER_NKS || []).map(n => n.toUpperCase());
-        const currentNk = (record.nk || '').trim().toUpperCase();
-        const isNkMissing = !currentNk || (masterNks.length > 0 && !masterNks.includes(currentNk));
-
-        if (isNameInvalid || isNkMissing) {
+        if (!isValidColorName(record.baseName, record.name) || !record.nk) {
             correctionsNeeded.push({ record: record, index: i });
         }
     }
     
-    if (correctionsNeeded.length === 0) return { records: correctedRecords, corrected: false };
-    
-    alert(`⚠️ Se encontraron ${correctionsNeeded.length} nombres que requieren atención.`);
-    
+    if (correctionsNeeded.length === 0 && !contextRecords) return { records: correctedRecords, corrected: false };
+    if (correctionsNeeded.length === 0 && contextRecords && records.length === 1) {
+        correctionsNeeded.push({ record: records[0], index: 0 });
+    }
+
     for (let idx = 0; idx < correctionsNeeded.length; idx++) {
         const { record, index } = correctionsNeeded[idx];
-        const originalName = record.name;
-        const result = await showCorrectionModal(record, idx, correctionsNeeded.length, suggestedNk);
-        
+        const result = await showCorrectionModal(record, idx, correctionsNeeded.length, suggestedNk, duplicateContext);
         if (!result) return { records: [], corrected: false };
         
         correctedRecords[index].baseName = result.newBaseName;
         correctedRecords[index].name = result.newFullName;
+        correctedRecords[index].nk = result.newNk;
         
-        // Extraer NK de forma más robusta del nombre completo resultante
-        const extractedNk = result.newFullName.trim().split(' ').pop();
-        correctedRecords[index].nk = extractedNk && (extractedNk.toUpperCase().startsWith('NK') || /[0-9]/.test(extractedNk)) ? extractedNk : result.newNk;
-        
-        if (onCorrectionApplied) onCorrectionApplied(originalName, result.newFullName, result.reason);
-        findAndCorrectInOtherArray(originalName, result.newBaseName, result.newFullName, fileType);
+        if (onCorrectionApplied) onCorrectionApplied(record.name, result.newFullName, result.reason);
+        findAndCorrectInOtherArray(record.name, result.newBaseName, result.newFullName, fileType);
     }
-    
     return { records: correctedRecords, corrected: true };
 }

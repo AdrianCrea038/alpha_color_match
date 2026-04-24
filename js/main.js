@@ -1,14 +1,18 @@
 // js/main.js
 import { Auth } from './core/auth.js';
 import { loadFile, parseTxtContent } from './modules/fileLoader.js';
-import { validateAndCorrectRecords } from './modules/nameValidator.js';
-import { compareFiles } from './modules/comparator.js';
+import { validateAndCorrectRecords, setAppInstance } from './modules/nameValidator.js';
+import { compareFiles as compareLogic } from './modules/comparator.js';
 import { renderResults } from './modules/resultsRenderer.js';
 import { exportResults } from './modules/exporter.js';
 import { clearAllCache, saveComparatorState, loadComparatorState } from './modules/cacheManager.js';
-import * as utils from './core/utils.js';
-window.utils = utils;
+import { showNotification, escapeHtml } from './core/utils.js';
 import { findDuplicateGroups, showDuplicateModal } from './modules/duplicateHandler.js';
+import { showFusionWizard } from './modules/fusionWizard.js';
+
+// Hacer globales para acceso desde otros módulos y eventos inline
+window.showNotification = showNotification;
+window.escapeHtml = escapeHtml;
 
 // Importar vistas
 import { PaletteValidatorView } from './views/paletteValidatorView.js';
@@ -45,6 +49,9 @@ class AlphaColorMatch {
         this.reportsView = null;
         this.dashboardView = null;
         this.linearizationValidatorView = null;
+
+        // Inicializar el validador con la instancia de la app
+        setAppInstance(this);
         
         this.init();
     }
@@ -169,6 +176,15 @@ class AlphaColorMatch {
         const exportBtn = document.getElementById('exportBtn');
         const replaceAllSecondaryBtn = document.getElementById('replaceAllSecondaryBtn');
         const clearCacheBtn = document.getElementById('clearCacheBtn');
+
+        // Selector de Modo
+        const modeRadios = document.querySelectorAll('input[name="compareMode"]');
+        modeRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const mode = e.target.value;
+                this.updateModeUI(mode);
+            });
+        });
         
         if (primaryInput) primaryInput.addEventListener('change', (e) => this.loadPrimaryFile(e));
         if (secondaryInput) secondaryInput.addEventListener('change', (e) => this.loadSecondaryFile(e));
@@ -176,14 +192,147 @@ class AlphaColorMatch {
         if (exportBtn) exportBtn.addEventListener('click', () => this.exportFiles());
         if (replaceAllSecondaryBtn) replaceAllSecondaryBtn.addEventListener('click', () => this.replaceAllWithSecondary());
         if (clearCacheBtn) clearCacheBtn.addEventListener('click', () => this.clearCache());
+        
+        const keepAllMasterBtn = document.getElementById('keepAllMasterBtn');
+        if (keepAllMasterBtn) {
+            keepAllMasterBtn.onclick = () => this.keepAllMasterItems();
+        }
+    }
+
+    updateModeUI(mode) {
+        const primaryTitle = document.querySelector('.upload-card:nth-child(1) h3');
+        const secondaryTitle = document.querySelector('.upload-card:nth-child(2) h3');
+        const compareBtn = document.getElementById('compareBtn');
+        const keepAllBtn = document.getElementById('keepAllMasterBtn');
+
+        if (mode === 'fusion') {
+            if (primaryTitle) primaryTitle.innerHTML = '🛡️ Archivo MASTER (Principal)';
+            if (secondaryTitle) secondaryTitle.innerHTML = '✏️ Archivo de CAMBIOS (Secundario)';
+            if (compareBtn) compareBtn.innerHTML = '🚀 INICIAR FUSIÓN';
+            if (keepAllBtn) keepAllBtn.style.display = 'inline-block';
+            window.showNotification('Modo Fusión Activado', 'El secundario será auditado antes de la unión.', 'info');
+        } else {
+            if (primaryTitle) primaryTitle.innerHTML = '📁 Archivo Principal';
+            if (secondaryTitle) secondaryTitle.innerHTML = '🔄 Archivo Secundario';
+            if (compareBtn) compareBtn.innerHTML = '🔍 COMPARAR';
+            if (keepAllBtn) keepAllBtn.style.display = 'none';
+        }
+        
+        localStorage.setItem('compareMode', mode);
+        this.results = [];
+        const resultsPanel = document.getElementById('resultsPanel');
+        if (resultsPanel) resultsPanel.style.display = 'none';
+    }
+
+    showTaskSelectorModal() {
+        return new Promise((resolve) => {
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay active';
+            modal.style.zIndex = '10005';
+            
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 700px; border: 2px solid #00e5ff; padding: 0;">
+                    <div class="modal-header" style="background: linear-gradient(90deg, #1e1e2e, #0f172a); border-bottom: 1px solid #00e5ff; padding: 2rem;">
+                        <h2 style="color: #00e5ff; margin: 0; text-align: center; font-size: 1.8rem;"><i class="fas fa-exchange-alt"></i> Selector de Función</h2>
+                        <p style="color: #9ca3af; text-align: center; margin-top: 10px;">¿Qué tipo de validación deseas realizar?</p>
+                    </div>
+                    <div class="modal-body" style="padding: 2.5rem; display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; background: #0c0c12;">
+                        
+                        <!-- OPCIÓN SIMPLE -->
+                        <div class="task-option" id="selectSimple" style="cursor: pointer; background: rgba(251, 191, 36, 0.05); border: 1px solid #fbbf24; padding: 2rem; border-radius: 12px; transition: all 0.3s ease; text-align: center;">
+                            <div style="font-size: 3rem; color: #fbbf24; margin-bottom: 1rem;"><i class="fas fa-check-double"></i></div>
+                            <h3 style="color: white; margin-bottom: 10px;">Comparación 1:1 (Simple)</h3>
+                            <p style="color: #9ca3af; font-size: 0.85rem; line-height: 1.4;">Validar que ambos archivos sean 100% idénticos en Nombres y CMYK.</p>
+                        </div>
+
+                        <!-- OPCIÓN FUSIÓN -->
+                        <div class="task-option" id="selectFusion" style="cursor: pointer; background: rgba(0, 229, 255, 0.05); border: 1px solid #00e5ff; padding: 2rem; border-radius: 12px; transition: all 0.3s ease; text-align: center;">
+                            <div style="font-size: 3rem; color: #00e5ff; margin-bottom: 1rem;"><i class="fas fa-code-merge"></i></div>
+                            <h3 style="color: white; margin-bottom: 10px;">Fusión / Linearización</h3>
+                            <p style="color: #9ca3af; font-size: 0.85rem; line-height: 1.4;">Auditar un archivo de cambios y unirlo a un Master conservando la base.</p>
+                        </div>
+
+                    </div>
+                    <div class="modal-footer" style="padding: 1rem; text-align: center; background: rgba(0,0,0,0.3);">
+                        <button class="skip-selector" style="background: transparent; color: #4b5563; border: none; cursor: pointer; font-size: 0.8rem;">Cerrar sin cambiar</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            const selectOption = (mode) => {
+                const radio = document.getElementById(mode === 'fusion' ? 'modeFusion' : 'modeSimple');
+                if (radio) {
+                    radio.checked = true;
+                    this.updateModeUI(mode);
+                }
+                modal.classList.remove('active');
+                setTimeout(() => modal.remove(), 300);
+                resolve(mode);
+            };
+
+            modal.querySelector('#selectFusion').onclick = () => selectOption('fusion');
+            modal.querySelector('#selectSimple').onclick = () => selectOption('simple');
+            modal.querySelector('.skip-selector').onclick = () => {
+                modal.classList.remove('active');
+                setTimeout(() => modal.remove(), 300);
+                resolve(null);
+            };
+
+            // Efectos hover
+            modal.querySelectorAll('.task-option').forEach(opt => {
+                opt.onmouseenter = () => {
+                    opt.style.transform = 'translateY(-5px)';
+                    opt.style.boxShadow = '0 10px 20px rgba(0,0,0,0.4)';
+                    opt.style.borderColor = '#00e5ff';
+                };
+                opt.onmouseleave = () => {
+                    opt.style.transform = 'translateY(0)';
+                    opt.style.boxShadow = 'none';
+                    if (opt.id !== 'selectFusion' || localStorage.getItem('compareMode') !== 'fusion') {
+                        opt.style.borderColor = '#2d3748';
+                    }
+                };
+            });
+        });
+    }
+
+    keepAllMasterItems() {
+        if (!this.results || this.results.length === 0) return;
+        
+        let count = 0;
+        for (const item of this.results) {
+            if (item.matchType === 'pending_primary') {
+                this.selectedPending.add(item.id);
+                this.deletedPending.delete(item.id);
+                count++;
+            }
+        }
+        
+        renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
+        this.validateExportReady();
+        window.showNotification('Acción Masiva', `Se conservarán ${count} colores del archivo Master.`, 'success');
     }
     
     async loadPrimaryFile(event) {
         const file = event.target.files[0];
         if (!file) return;
         
+        const mode = document.querySelector('input[name="compareMode"]:checked')?.value || 'simple';
+
         try {
-            const result = await this.processFileWithValidation(file, 'primary');
+            let result;
+            if (mode === 'fusion') {
+                // Modo Fusión: Carga rápida para el Master
+                console.log('🛡️ Carga rápida del Master (Modo Fusión)');
+                const { records, fileName } = await loadFile(file, true);
+                result = { records, fileName, correctionsApplied: 0, duplicatesResolved: 0 };
+            } else {
+                // Modo Simple: Validación completa
+                result = await this.processFileWithValidation(file, 'primary');
+            }
+
             if (result) {
                 this.primaryData = result.records;
                 this.primaryFileName = result.fileName;
@@ -191,11 +340,7 @@ class AlphaColorMatch {
                 this.renderDataList('primary', this.primaryData);
                 this.saveCurrentState();
                 
-                if (result.correctionsApplied > 0 || result.duplicatesResolved > 0) {
-                    showNotification('Archivo Cargado', `Se procesaron ${this.primaryData.length} registros. (Correcciones: ${result.correctionsApplied}, Duplicados: ${result.duplicatesResolved})`, 'success');
-                } else {
-                    showNotification('Archivo Cargado', `Se cargaron ${this.primaryData.length} registros correctamente.`, 'success');
-                }
+                window.showNotification('Archivo Cargado', `Master: ${this.primaryData.length} registros.`, 'success');
             }
         } catch (error) {
             console.error('❌ Error:', error);
@@ -208,6 +353,7 @@ class AlphaColorMatch {
         if (!file) return;
         
         try {
+            // El secundario SIEMPRE se valida estrictamente en ambos modos
             const result = await this.processFileWithValidation(file, 'secondary');
             if (result) {
                 this.secondaryData = result.records;
@@ -215,19 +361,8 @@ class AlphaColorMatch {
                 this.updateFileInfo('secondary', result.fileName, this.secondaryData.length);
                 this.renderDataList('secondary', this.secondaryData);
                 
-                // Guardar estadísticas para el log de comparación
-                localStorage.setItem('lastFileLoadStats', JSON.stringify({
-                    corrections: result.correctionsApplied,
-                    duplicates: result.duplicatesResolved
-                }));
-
                 this.saveCurrentState();
-                
-                if (result.correctionsApplied > 0 || result.duplicatesResolved > 0) {
-                    showNotification('Archivo Cargado', `Se procesaron ${this.secondaryData.length} registros. (Correcciones: ${result.correctionsApplied}, Duplicados: ${result.duplicatesResolved})`, 'success');
-                } else {
-                    showNotification('Archivo Cargado', `Se cargaron ${this.secondaryData.length} registros correctamente.`, 'success');
-                }
+                window.showNotification('Archivo de Cambios Cargado', `Listo: ${this.secondaryData.length} registros validados.`, 'success');
             }
         } catch (error) {
             console.error('❌ Error:', error);
@@ -239,7 +374,7 @@ class AlphaColorMatch {
         console.log(`📁 Procesando archivo ${fileType}: ${file.name}`);
         const { records: rawRecords, fileName } = await loadFile(file, true); 
         
-        // 1. Calcular sugerencia de NK basado en lo predominante en el archivo
+        // 1. Calcular sugerencia de NK
         const nkCounts = {};
         rawRecords.forEach(r => {
             if (r.nk) {
@@ -249,22 +384,20 @@ class AlphaColorMatch {
         });
         const suggestedNk = Object.entries(nkCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
 
-        // 2. Detectar duplicados y mala nomenclatura básica
+        // 2. Detectar problemas
         const duplicateGroups = findDuplicateGroups(rawRecords);
         const hasParentheses = rawRecords.some(r => /\([^)]*\)/.test(r.name)); 
-        
-        // 3. NUEVO: Detectar si faltan NKs según la tabla maestra
         const masterNks = (window.ALL_MASTER_NKS || []).map(n => n.toUpperCase());
         const hasMissingNks = rawRecords.some(r => !r.nk || (masterNks.length > 0 && !masterNks.includes(r.nk.toUpperCase())));
 
         if (duplicateGroups.length > 0 || hasParentheses || hasMissingNks) {
-            showNotification('Auditoría de Archivo', `Se detectaron problemas que requieren su atención. Iniciando asistente...`, 'info');
+            window.showNotification('Auditoría de Archivo', `Se detectaron problemas en ${fileType}.`, 'info');
         }
 
         let currentRecords = [...rawRecords];
         let duplicatesResolved = 0;
 
-        // 4. Resolver Duplicados
+        // 3. Resolver Duplicados
         if (duplicateGroups.length > 0) {
             const indicesToRemove = await showDuplicateModal(duplicateGroups);
             if (indicesToRemove.length > 0) {
@@ -273,7 +406,7 @@ class AlphaColorMatch {
             }
         }
 
-        // 5. Resolver Nombres Mal Escritos y NKs Faltantes
+        // 4. Resolver Nombres Mal Escritos
         let correctionsApplied = 0;
         const onCorrection = (oldName, newName, reason) => {
             correctionsApplied++;
@@ -285,9 +418,22 @@ class AlphaColorMatch {
         if (validationResult.records.length === 0 && currentRecords.length > 0) {
             return null; // Cancelado
         }
+        
+        currentRecords = validationResult.records;
+
+        // 5. RE-VALIDACIÓN DE DUPLICADOS (Crucial después de correcciones)
+        const finalDuplicateGroups = findDuplicateGroups(currentRecords);
+        if (finalDuplicateGroups.length > 0) {
+            window.showNotification('Duplicados Detectados', 'Las correcciones de nombre generaron duplicados. Por favor, resuélvalos.', 'warning');
+            const indicesToRemove = await showDuplicateModal(finalDuplicateGroups);
+            if (indicesToRemove.length > 0) {
+                currentRecords = currentRecords.filter((_, idx) => !indicesToRemove.includes(idx));
+                duplicatesResolved += indicesToRemove.length;
+            }
+        }
 
         return {
-            records: validationResult.records,
+            records: currentRecords,
             fileName,
             correctionsApplied,
             duplicatesResolved,
@@ -295,7 +441,7 @@ class AlphaColorMatch {
         };
     }
     
-    compareFiles() {
+    async compareFiles() {
         if (this.primaryData.length === 0) {
             alert('⚠️ Cargue archivo principal primero.');
             return;
@@ -306,25 +452,27 @@ class AlphaColorMatch {
         }
         
         console.log('🔍 Comparando archivos...');
-        console.log('Primary:', this.primaryData.length, 'colores');
-        console.log('Secondary:', this.secondaryData.length, 'colores');
+        const mode = localStorage.getItem('compareMode') || 'simple';
         
         this.selectedPending.clear();
         this.deletedPending.clear();
         this.groupSelections.clear();
         this.manualGroupSelections.clear();
         
-        this.results = compareFiles(this.primaryData, this.secondaryData);
-        console.log('📊 Resultados:', this.results.length);
+        this.results = compareLogic(this.primaryData, this.secondaryData, mode);
         
-        // Guardar métricas iniciales de la sesión (se actualizarán al exportar si es necesario)
+        // Si es modo fusión, lanzar el asistente de decisiones
+        if (mode === 'fusion') {
+            window.showNotification('Iniciando Asistente', 'Resuelve los conflictos paso a paso.', 'info');
+            await showFusionWizard(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
+        }
+
         this.logComparisonSession();
-        
         renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
         this.validateExportReady();
         this.saveCurrentState();
         
-        showNotification('Comparación completada', `${this.results.length} registros procesados`, 'success');
+        window.showNotification('Proceso completado', `${this.results.length} registros listos.`, 'success');
     }
     
     selectGroup(groupId, source) {
@@ -360,7 +508,7 @@ class AlphaColorMatch {
             replaceBtn.style.opacity = '1';
         }, 1500);
         
-        showNotification('Valores actualizados', `${groups.size} grupos cambiados a valor secundario`, 'info');
+        window.showNotification('Valores actualizados', `${groups.size} grupos cambiados a valor secundario`, 'info');
     }
     
     togglePendingAdd(itemId) {
@@ -465,6 +613,16 @@ class AlphaColorMatch {
             if (filenameSpan) filenameSpan.textContent = filename;
             if (recordCountSpan) recordCountSpan.textContent = `${count} registro${count !== 1 ? 's' : ''}`;
         }
+
+        // Sugerir nombre de exportación basado en el archivo principal
+        if (type === 'primary' && filename !== 'Ningún archivo cargado') {
+            const exportNameInput = document.getElementById('exportFileName');
+            if (exportNameInput) {
+                // Quitar extensión .txt y limpiar caracteres raros
+                const cleanName = filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_");
+                exportNameInput.value = cleanName;
+            }
+        }
     }
     
     renderDataList(type, data) {
@@ -518,6 +676,9 @@ class AlphaColorMatch {
                 if (item.dataset.view === viewName) item.classList.add('active');
             });
             
+            if (viewName === 'comparator') {
+                this.showTaskSelectorModal();
+            }
             if (viewName === 'paletteValidator' && this.paletteValidatorView) {
                 this.paletteValidatorView.renderTable();
             }
@@ -543,6 +704,12 @@ class AlphaColorMatch {
             }
             if (viewName === 'admin' && this.adminView) {
                 this.adminView.render();
+            }
+
+            // Controlar visibilidad del footer de instrucciones (solo para comparador)
+            const footer = document.querySelector('.footer');
+            if (footer) {
+                footer.style.display = (viewName === 'comparator') ? 'block' : 'none';
             }
         };
         this.switchView = switchView;
@@ -635,6 +802,7 @@ class AlphaColorMatch {
     getInboxItems() {
         return [...this.inboxItems].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     }
+
 
     updateInboxBell() {
         const count = this.inboxItems.filter(item => !item.is_read && !item.read).length;
@@ -808,7 +976,7 @@ class AlphaColorMatch {
             URL.revokeObjectURL(url);
             
             localStorage.setItem('lastBackupDate', new Date().toDateString());
-            showNotification('✅ Backup automático completado con éxito', 'success');
+            window.showNotification('✅ Backup automático completado con éxito', 'success');
         } catch (e) {
             console.error('Error en backup:', e);
         }

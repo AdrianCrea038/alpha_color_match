@@ -10,7 +10,11 @@ function getNK(record) {
     })();
 }
 
-export function compareFiles(primaryData, secondaryData) {
+export function compareFiles(primaryData, secondaryData, mode = 'fusion') {
+    if (mode === 'ciclico') {
+        return compareCiclico(primaryData, secondaryData);
+    }
+
     const primaryByNK = new Map();
     const secondaryByNK = new Map();
     
@@ -63,7 +67,17 @@ export function compareFiles(primaryData, secondaryData) {
             if (primarios.length && secundarios.length) {
                 for (const primary of primarios) {
                     for (const secondary of secundarios) {
-                        const isExact = primary.baseName === secondary.baseName;
+                        let isExact = false;
+                        
+                        if (mode === 'simple') {
+                            const isNameMatch = primary.baseName === secondary.baseName;
+                            const isNkMatch = (primary.nk || '').trim().toUpperCase() === (secondary.nk || '').trim().toUpperCase();
+                            const isCmykMatch = (primary.cmyk || []).every((val, idx) => Math.abs(val - (secondary.cmyk?.[idx] || 0)) < 0.01);
+                            isExact = isNameMatch && isNkMatch && isCmykMatch;
+                        } else {
+                            isExact = primary.baseName === secondary.baseName;
+                        }
+
                         results.push({
                             id: `primary_${primary.tempId || primary.id || Math.random()}`,
                             groupId,
@@ -125,5 +139,63 @@ export function compareFiles(primaryData, secondaryData) {
         return (a.primaryData?.name || a.secondaryData?.name || '').localeCompare(b.primaryData?.name || b.secondaryData?.name || '');
     });
     
+    return results;
+}
+
+function compareCiclico(primaryData, secondaryData) {
+    const pMap = new Map();
+    const sMap = new Map();
+    const results = [];
+    
+    // Agrupar por firma única (Familia de Equivalentes + NK)
+    primaryData.forEach(r => {
+        const cleanBase = (r.baseName || r.name || '').replace(/\s*\([^)]*\)/g, '').toUpperCase().trim();
+        const equivalents = getAllEquivalentNames(cleanBase);
+        const groupKey = equivalents[0];
+        const key = `${groupKey}|${(r.nk || '').trim().toUpperCase()}`;
+        if (!pMap.has(key)) pMap.set(key, []);
+        pMap.get(key).push(r);
+    });
+
+    secondaryData.forEach(r => {
+        const cleanBase = (r.baseName || r.name || '').replace(/\s*\([^)]*\)/g, '').toUpperCase().trim();
+        const equivalents = getAllEquivalentNames(cleanBase);
+        const groupKey = equivalents[0];
+        const key = `${groupKey}|${(r.nk || '').trim().toUpperCase()}`;
+        if (!sMap.has(key)) sMap.set(key, []);
+        sMap.get(key).push(r);
+    });
+
+    const allKeys = new Set([...pMap.keys(), ...sMap.keys()]);
+
+    allKeys.forEach(key => {
+        const pList = pMap.get(key) || [];
+        const sList = sMap.get(key) || [];
+        const max = Math.max(pList.length, sList.length);
+
+        for (let i = 0; i < max; i++) {
+            const p = pList[i];
+            const s = sList[i];
+
+            let type = 'exact';
+            if (!p) type = 'additional_in_secondary';
+            else if (!s) type = 'missing_in_secondary';
+            else {
+                // Si el nombre base es diferente pero están en el mismo grupo, es un "complementario"
+                const isExactName = p.name.trim().toUpperCase() === s.name.trim().toUpperCase();
+                const cmykMatch = p.cmyk.every((v, idx) => Math.abs(v - s.cmyk[idx]) < 0.0001);
+                
+                if (!isExactName || !cmykMatch) type = 'different';
+            }
+
+            results.push({
+                matchType: type,
+                primaryData: p,
+                secondaryData: s,
+                isDuplicate: (p && pList.length > 1) || (s && sList.length > 1)
+            });
+        }
+    });
+
     return results;
 }

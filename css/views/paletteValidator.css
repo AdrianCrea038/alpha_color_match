@@ -1,413 +1,226 @@
 /* ============================================ */
-/* PALETTE VALIDATOR VIEW - Estilos para validación de paleta */
+/* COMPARATOR (Palette Validator) - Premium Look */
 /* ============================================ */
 
 .palette-validator-container {
     padding: 0.5rem 0;
 }
 
+/* Header & Main Cards */
 .palette-validator-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1.5rem;
-    flex-wrap: wrap;
-    gap: 1rem;
-    background: #111117;
-    padding: 1rem;
-    border-radius: 10px;
-    border: 1px solid #2d3748;
-}
-
-.palette-validator-header h3 {
-    font-size: 1.2rem;
-    font-weight: 600;
-    color: #eab308;
-    margin: 0;
-}
-
-.palette-validator-header h3 i {
-    margin-right: 0.5rem;
-    color: #00e5ff;
-}
-
-.palette-validator-actions {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-}
-
-.palette-validator-actions button {
-    padding: 0.6rem 1.2rem;
-    border-radius: 8px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
+    margin-bottom: 2rem;
+    padding: 0;
     background: transparent;
-}
-
-.palette-validator-actions .btn-secondary {
-    border: 1.5px solid #4b5563;
-    color: #9ca3af;
-}
-
-.palette-validator-actions .btn-secondary:hover {
-    background: rgba(156, 163, 175, 0.1);
-    border-color: #9ca3af;
-    transform: translateY(-1px);
-}
-
-.palette-validator-actions .btn-primary {
-    border: 1.5px solid #00e5ff;
-    color: #00e5ff;
-}
-
-.palette-validator-actions .btn-primary:hover:not(:disabled) {
-    background: rgba(0, 229, 255, 0.1);
-    transform: translateY(-1px);
-    box-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
-}
-
-.palette-validator-actions .btn-primary:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-    transform: none;
-}
-
-/* Tabla de validación */
-.validator-table {
-    overflow-x: auto;
-    max-height: 550px;
-    overflow-y: auto;
-    border-radius: 8px;
-    border: 1px solid #2d3748;
-    background: #0c0c12;
-}
-
-.validator-table .data-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.75rem;
-}
-
-.validator-table .data-table th {
-    background: #1a1a2a;
-    padding: 0.75rem 0.5rem;
-    text-align: left;
-    color: #9ca3af;
-    font-weight: 600;
-    border-bottom: 1px solid #2d3748;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.validator-table .data-table td {
-    padding: 0.5rem;
-    border-bottom: 1px solid #1e1e2c;
-    vertical-align: middle;
-}
-
-.validator-table .data-table input {
-    width: 100%;
-    background: #1e1e2c;
-    border: 1px solid #4b5563;
-    color: #e2e8f0;
-    border-radius: 6px;
-    padding: 0.4rem;
-    font-size: 0.7rem;
-    font-family: monospace;
-    transition: all 0.2s;
-    text-align: center;
-}
-
-.validator-table .data-table input:focus {
-    outline: none;
-    border-color: #00e5ff;
-    box-shadow: 0 0 5px rgba(0, 229, 255, 0.3);
-}
-
-.validator-table .data-table input:disabled {
-    background: #2d3748;
-    color: #9ca3af;
-    cursor: not-allowed;
-}
-
-.validator-table tr.locked-row {
-    background: rgba(21, 128, 61, 0.1);
-    border-left: 3px solid #15803d;
-}
-
-.validator-table tr.locked-row td:first-child {
-    border-left: 3px solid #15803d;
-}
-
-.row-number {
-    font-weight: bold;
-    color: #fbbf24;
-    text-align: center;
-    font-size: 0.8rem;
-}
-
-.status-cell {
-    text-align: center;
-}
-
-.status-badge {
-    display: inline-block;
-    padding: 0.25rem 0.6rem;
-    border-radius: 20px;
-    font-size: 0.7rem;
-    font-weight: 600;
-}
-
-.status-badge.locked {
-    background: #15803d;
-    color: white;
-    box-shadow: 0 0 5px rgba(21, 128, 61, 0.3);
-}
-
-.status-badge.pending {
-    background: #b45309;
-    color: white;
-}
-
-.actions-cell {
-    text-align: center;
-    white-space: nowrap;
-}
-
-.btn-lock, .btn-modify {
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s;
     border: none;
+}
+
+.comparator-grid {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+/* Assignments & Info Cards */
+.comparator-card {
+    background: rgba(30, 30, 44, 0.4);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 1.5rem;
+    height: fit-content;
+}
+
+.assignment-info-card {
+    background: linear-gradient(135deg, rgba(0, 229, 255, 0.1) 0%, rgba(30, 30, 44, 0.4) 100%);
+    border: 1px solid rgba(0, 229, 255, 0.2);
+}
+
+.info-title {
+    font-weight: 700;
+    color: #00e5ff;
     font-size: 0.9rem;
-}
-
-.btn-lock {
-    background: #15803d;
-    color: white;
-}
-
-.btn-lock:hover {
-    background: #166534;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(21, 128, 61, 0.4);
-}
-
-.btn-modify {
-    background: #b45309;
-    color: white;
-}
-
-.btn-modify:hover {
-    background: #9b2e05;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(180, 83, 9, 0.4);
-}
-
-/* Plotter selector dentro del header */
-.plotter-selector {
+    margin-bottom: 1rem;
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    background: #1f1f2a;
-    padding: 0.4rem 1rem;
-    border-radius: 2rem;
-    border: 1px solid #4b5563;
+    gap: 0.5rem;
 }
 
-.plotter-selector label {
+.info-details {
     font-size: 0.8rem;
-    color: #9ca3af;
-    font-weight: 500;
-}
-
-.plotter-select {
-    background: #0c0c12;
-    border: 1px solid #4b5563;
-    border-radius: 6px;
-    padding: 0.3rem 0.6rem;
     color: #e2e8f0;
-    font-size: 0.8rem;
-    cursor: pointer;
-    min-width: 70px;
-    text-align: center;
-}
-
-.plotter-select:hover {
-    border-color: #6b7280;
-}
-
-.plotter-select:focus {
-    outline: none;
-    border-color: #00e5ff;
-}
-
-/* Modal para desbloquear */
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.85);
-    backdrop-filter: blur(4px);
     display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10000;
-    opacity: 0;
-    transition: opacity 0.3s ease;
+    flex-direction: column;
+    gap: 0.4rem;
 }
 
-.modal-overlay.active {
-    opacity: 1;
+.info-details span { color: #94a3b8; }
+
+/* Table Section */
+.validator-table-wrapper {
+    background: rgba(30, 30, 44, 0.3);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+    margin-top: 1rem;
 }
 
-.modal-content {
-    background: #0c0c12;
-    border: 1px solid #2d3748;
-    border-radius: 12px;
-    max-width: 450px;
-    width: 90%;
-}
-
-.modal-header {
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid #2d3748;
+.validator-table-header {
+    padding: 1.25rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-radius: 12px 12px 0 0;
 }
 
-.modal-header h3 {
-    font-size: 1rem;
-    color: white;
+.validator-table-scroll {
+    max-height: 600px;
+    overflow-y: auto;
 }
 
-.modal-close {
-    background: transparent;
-    border: none;
-    color: #9ca3af;
-    font-size: 1.5rem;
-    cursor: pointer;
-}
-
-.modal-body {
-    padding: 1.5rem;
-}
-
-.modal-buttons {
-    padding: 1rem 1.5rem;
-    border-top: 1px solid #2d3748;
-    display: flex;
-    gap: 1rem;
-    justify-content: flex-end;
-}
-
-.modal-buttons .btn {
-    padding: 0.5rem 1rem;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.8rem;
-}
-
-.modal-buttons .btn-secondary {
-    background: transparent;
-    border: 1px solid #9ca3af;
-    color: #9ca3af;
-}
-
-.modal-buttons .btn-primary {
-    background: transparent;
-    border: 1px solid #15803d;
-    color: #15803d;
-}
-
-.modal-buttons .btn-primary:hover {
-    background: rgba(21, 128, 61, 0.1);
-}
-
-.form-group {
-    margin-bottom: 1rem;
-}
-
-.form-group label {
-    display: block;
-    font-size: 0.75rem;
-    color: #9ca3af;
-    margin-bottom: 0.25rem;
-}
-
-.form-group textarea {
+.premium-validator-table {
     width: 100%;
-    padding: 0.5rem;
-    background: #1e1e2c;
-    border: 1px solid #4b5563;
-    border-radius: 6px;
-    color: white;
+    border-collapse: collapse;
     font-size: 0.8rem;
-    resize: vertical;
-    font-family: inherit;
 }
 
-.form-group textarea:focus {
+.premium-validator-table th {
+    text-align: left;
+    padding: 1rem 0.75rem;
+    background: rgba(10, 10, 18, 0.6);
+    color: #94a3b8;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 0.7rem;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+
+.premium-validator-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    vertical-align: middle;
+}
+
+/* Rows & Interactivity */
+.premium-validator-table tr:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.premium-validator-table tr.locked-row {
+    background: rgba(16, 185, 129, 0.05);
+}
+
+.premium-validator-table tr.locked-row td {
+    border-bottom: 1px solid rgba(16, 185, 129, 0.1);
+}
+
+/* Inputs Premium */
+.table-input {
+    width: 100%;
+    background: rgba(10, 10, 18, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 0.5rem;
+    color: #fff;
+    font-size: 0.75rem;
+    font-family: 'Fira Code', monospace;
+    transition: all 0.2s;
+    text-align: center;
+}
+
+.table-input:focus {
     outline: none;
     border-color: #00e5ff;
+    background: rgba(0, 229, 255, 0.05);
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-    .palette-validator-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-    
-    .palette-validator-actions {
-        justify-content: stretch;
-    }
-    
-    .palette-validator-actions button {
-        flex: 1;
-    }
-    
-    .validator-table .data-table th,
-    .validator-table .data-table td {
-        padding: 0.4rem 0.25rem;
-        font-size: 0.65rem;
-    }
-    
-    .validator-table .data-table input {
-        font-size: 0.6rem;
-        padding: 0.3rem;
-    }
-    
-    .btn-lock, .btn-modify {
-        width: 28px;
-        height: 28px;
-        font-size: 0.8rem;
-    }
-    
-    .plotter-selector {
-        width: 100%;
-        justify-content: space-between;
-    }
-    
-    .plotter-select {
-        flex: 1;
+.table-input:disabled {
+    opacity: 0.5;
+    border-color: transparent;
+    cursor: default;
+}
+
+/* Action Buttons in Table */
+.btn-action-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.8rem;
+}
+
+.btn-lock-ok { background: #10b981; color: white; }
+.btn-lock-ok:hover { transform: scale(1.1); box-shadow: 0 0 10px rgba(16, 185, 129, 0.5); }
+
+.btn-unlock-warn { background: #fbbf24; color: #000; }
+.btn-unlock-warn:hover { transform: scale(1.1); box-shadow: 0 0 10px rgba(251, 191, 36, 0.5); }
+
+/* Progress Bar */
+.progress-container {
+    margin-top: 1rem;
+}
+
+.progress-bar-bg {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00e5ff, #0099cc);
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.progress-text {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: #94a3b8;
+    margin-top: 0.4rem;
+}
+
+/* Other Assignments List */
+.assignments-mini-list {
+    margin-top: 1.5rem;
+}
+
+.assignment-mini-item {
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.assignment-mini-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(0, 229, 255, 0.2);
+}
+
+.mini-item-name {
+    font-weight: 600;
+    color: #e2e8f0;
+    font-size: 0.8rem;
+}
+
+@media (max-width: 1100px) {
+    .comparator-grid {
+        grid-template-columns: 1fr;
     }
 }

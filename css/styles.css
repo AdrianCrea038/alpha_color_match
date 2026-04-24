@@ -678,3 +678,67 @@ body {
         font-size: 1.5rem;
     }
 }
+
+/* Mode Selector Styles */
+.mode-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.2rem;
+    border-radius: 12px;
+    background: rgba(30, 30, 44, 0.6);
+    border: 2px solid rgba(255, 255, 255, 0.05);
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    min-width: 220px;
+    text-align: center;
+}
+
+.mode-label i {
+    font-size: 1.8rem;
+    margin-bottom: 0.8rem;
+    color: #9ca3af;
+    transition: all 0.3s ease;
+}
+
+.mode-label span {
+    font-weight: 600;
+    font-size: 1rem;
+    color: #eef2ff;
+    margin-bottom: 0.3rem;
+    display: block;
+}
+
+.mode-label small {
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+.mode-label:hover {
+    background: rgba(0, 229, 255, 0.05);
+    border-color: rgba(0, 229, 255, 0.3);
+    transform: translateY(-3px);
+}
+
+.mode-label:hover i {
+    color: #00e5ff;
+    transform: scale(1.1);
+}
+
+input[type="radio"]:checked + .mode-label {
+    background: rgba(0, 229, 255, 0.1);
+    border-color: #00e5ff;
+    box-shadow: 0 0 15px rgba(0, 229, 255, 0.2);
+}
+
+input[type="radio"]:checked + .mode-label i {
+    color: #00e5ff;
+}
+
+input[type="radio"]:checked + .mode-label span {
+    color: #fff;
+}
+
+input[type="radio"]:checked + .mode-label small {
+    color: rgba(0, 229, 255, 0.8);
+}

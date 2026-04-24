@@ -75,22 +75,28 @@ export function renderResults(results, groupSelections, selectedPending, deleted
     
     tbody.innerHTML = filteredResults.map(item => {
         const groupBadge = item.groupDisplayId ? `<span style="display:inline-block; background:rgba(0,229,255,0.2); color:#00e5ff; padding:0.1rem 0.4rem; border-radius:0.25rem; font-size:0.6rem; margin-right:0.5rem;">${escapeHtml(item.groupDisplayId)}</span>` : '';
-        
+        const mode = localStorage.getItem('compareMode') || 'simple';
+        const isFusion = mode === 'fusion';
+
         if (item.matchType === 'exact' || item.matchType === 'equivalent') {
             const currentSelection = groupSelections.get(item.groupId) || 'primary';
             const isManual = groupSelections.has(item.groupId);
             const isExact = item.matchType === 'exact';
             
+            // Etiquetas según el modo
+            const primaryLabel = isFusion ? '💎 Mantener Master' : '📁 Principal';
+            const secondaryLabel = isFusion ? '✏️ Usar Cambios' : '🔄 Secundario';
+
             return `
                 <tr style="background: ${isExact ? 'rgba(21,128,61,0.1)' : 'rgba(180,83,9,0.1)'}">
                     <td>${groupBadge}<strong>${escapeHtml(item.nk)}</strong></td>
                     <td>${escapeHtml(item.primaryData?.name || '—')}<br><span class="cmyk-small">C:${item.primaryData?.cmyk[0].toFixed(1)} M:${item.primaryData?.cmyk[1].toFixed(1)} Y:${item.primaryData?.cmyk[2].toFixed(1)} K:${item.primaryData?.cmyk[3].toFixed(1)}</span></td>
                     <td>${escapeHtml(item.secondaryData?.name || '—')}<br><span class="cmyk-small">C:${item.secondaryData?.cmyk[0].toFixed(1)} M:${item.secondaryData?.cmyk[1].toFixed(1)} Y:${item.secondaryData?.cmyk[2].toFixed(1)} K:${item.secondaryData?.cmyk[3].toFixed(1)}</span></td>
-                    <td><span class="${isExact ? 'match-badge yes' : 'match-badge'}" style="${!isExact ? 'background:#b45309;' : ''}">${isExact ? '✅ COINCIDENCIA' : '🔄 EQUIVALENTE'}</span></td>
+                    <td><span class="${isExact ? 'match-badge yes' : 'match-badge'}" style="${!isExact ? 'background:#b45309;' : ''}">${isExact ? (isFusion ? '🤝 COINCIDE CON MASTER' : '✅ COINCIDENCIA') : (isFusion ? '🔄 SUGERIR CAMBIO' : '🔄 EQUIVALENTE')}</span></td>
                     <td>
                         <div class="selection-buttons">
-                            <button class="selection-btn ${currentSelection === 'primary' ? 'active-primary' : ''}" onclick="window.selectGroup('${item.groupId}', 'primary')">📁 Principal</button>
-                            <button class="selection-btn ${currentSelection === 'secondary' ? 'active-secondary' : ''}" onclick="window.selectGroup('${item.groupId}', 'secondary')">🔄 Secundario</button>
+                            <button class="selection-btn ${currentSelection === 'primary' ? 'active-primary' : ''}" onclick="window.selectGroup('${item.groupId}', 'primary')">${primaryLabel}</button>
+                            <button class="selection-btn ${currentSelection === 'secondary' ? 'active-secondary' : ''}" onclick="window.selectGroup('${item.groupId}', 'secondary')">${secondaryLabel}</button>
                             ${isManual ? '<span class="manual-badge">🔒 Manual</span>' : ''}
                         </div>
                     </td>
@@ -99,19 +105,25 @@ export function renderResults(results, groupSelections, selectedPending, deleted
         } else {
             const isAdded = selectedPending.has(item.id);
             const isDeleted = deletedPending.has(item.id);
-            let statusText = '❌ PENDIENTE';
+            const isFromPrimary = item.matchType === 'pending_primary';
+
+            let statusText = isFusion ? (isFromPrimary ? '⚠️ EN MASTER' : '✨ NUEVO CANDIDATO') : '❌ PENDIENTE';
             let statusClass = 'match-badge no';
             let rowBg = 'rgba(153, 27, 27, 0.1)';
             
             if (isAdded) {
-                statusText = '✓ AGREGADO';
+                statusText = isFusion ? (isFromPrimary ? '✅ SE QUEDA' : '🚀 SE AGREGA') : '✓ AGREGADO';
                 statusClass = 'match-badge yes';
                 rowBg = 'rgba(21, 128, 61, 0.2)';
             } else if (isDeleted) {
-                statusText = '🗑️ ELIMINADO';
+                statusText = isFusion ? (isFromPrimary ? '🗑️ SE QUITA' : '🚫 IGNORADO') : '🗑️ ELIMINADO';
                 rowBg = 'rgba(153, 27, 27, 0.2)';
             }
             
+            // Botones según el modo y origen
+            const addLabel = isFusion ? (isFromPrimary ? '✅ Conservar' : '🚀 Añadir') : '➕ Agregar';
+            const deleteLabel = isFusion ? (isFromPrimary ? '🗑️ Quitar' : '🚫 Ignorar') : '🗑️ Eliminar';
+
             return `
                 <tr style="background: ${rowBg}">
                     <td>${groupBadge}<strong>${escapeHtml(item.nk)}</strong></td>
@@ -120,8 +132,8 @@ export function renderResults(results, groupSelections, selectedPending, deleted
                     <td><span class="${statusClass}">${statusText}</span></td>
                     <td>
                         <div class="pending-buttons">
-                            <button class="small-btn btn-success" onclick="window.togglePendingAdd('${item.id}')" ${isAdded ? 'disabled' : ''}>➕ Agregar</button>
-                            <button class="small-btn btn-danger" onclick="window.togglePendingDelete('${item.id}')" ${isDeleted ? 'disabled' : ''}>🗑️ Eliminar</button>
+                            <button class="small-btn btn-success" onclick="window.togglePendingAdd('${item.id}')" ${isAdded ? 'disabled' : ''}>${addLabel}</button>
+                            <button class="small-btn btn-danger" onclick="window.togglePendingDelete('${item.id}')" ${isDeleted ? 'disabled' : ''}>${deleteLabel}</button>
                         </div>
                     </td>
                 </tr>

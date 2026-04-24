@@ -14,7 +14,9 @@
     <link rel="stylesheet" href="css/views/admin.css">
     <link rel="stylesheet" href="css/views/reports.css">
     <link rel="stylesheet" href="css/views/dashboard.css">
+    <link rel="stylesheet" href="css/components/premium.css">
     <link rel="stylesheet" href="css/views/linearizationValidator.css">
+    <link rel="stylesheet" href="css/views/history.css">
     <link rel="stylesheet" href="css/responsive.css">
 </head>
 <body>
@@ -74,6 +76,26 @@
 
                 <!-- Vista Comparador -->
                 <div id="comparatorView" class="view-content active">
+                    <!-- Selector de Modo de Comparación -->
+                    <div class="mode-selector-container" style="display: flex; justify-content: center; gap: 2rem; margin-bottom: 2rem; background: rgba(30, 30, 44, 0.4); padding: 1.5rem; border-radius: 12px; border: 1px solid rgba(0, 229, 255, 0.2);">
+                        <div class="mode-option">
+                            <input type="radio" id="modeSimple" name="compareMode" value="simple" checked style="display: none;">
+                            <label for="modeSimple" class="mode-label">
+                                <i class="fas fa-arrows-alt-h"></i>
+                                <span>Comparación Simple</span>
+                                <small>Validación estricta de ambos archivos</small>
+                            </label>
+                        </div>
+                        <div class="mode-option">
+                            <input type="radio" id="modeFusion" name="compareMode" value="fusion" style="display: none;">
+                            <label for="modeFusion" class="mode-label">
+                                <i class="fas fa-code-merge"></i>
+                                <span>Fusión de Linearización</span>
+                                <small>Validar secundario y unir al Master</small>
+                            </label>
+                        </div>
+                    </div>
+
                     <div class="upload-section">
                         <div class="upload-card">
                             <h3>📁 Archivo Principal</h3>
@@ -101,6 +123,7 @@
 
                     <div style="text-align: center; display: flex; gap: 1rem; justify-content: center; margin-bottom: 1rem; flex-wrap: wrap;">
                         <button id="compareBtn" class="compare-btn">🔍 COMPARAR</button>
+                        <button id="keepAllMasterBtn" class="compare-btn" style="background: #0099cc; display: none;">✅ Conservar todo el Master</button>
                         <button id="replaceAllSecondaryBtn" class="compare-btn" style="background: #b45309;">🔄 Actualización a valor secundario</button>
                         <button id="exportBtn" class="compare-btn" style="background: #15803d;" disabled>📥 EXPORTAR ARCHIVO</button>
                         <button id="clearCacheBtn" class="compare-btn" style="border-color: #9ca3af; color: #9ca3af;">🗑️ LIMPIAR CACHÉ</button>
@@ -145,13 +168,27 @@
 
                 <!-- Vista Bandeja de Entrada -->
                 <div id="historyView" class="view-content">
-                    <div class="history-header">
-                        <h3>📬 Bandeja de Entrada</h3>
-                    </div>
-                    <div class="history-list" id="historyList">
-                        <div class="empty-state">
-                            <div class="empty-icon">📭</div>
-                            <p>No hay registros en la bandeja</p>
+                    <div class="mail-layout" id="mailLayout">
+                        <!-- Lista de Mensajes -->
+                        <div class="mail-list-container">
+                            <div class="mail-list-header">
+                                <h3 style="margin:0; font-size: 1.1rem;"><i class="fas fa-inbox"></i> Bandeja</h3>
+                                <span id="mailCountBadge" class="status-badge" style="background: rgba(0, 229, 255, 0.2); color: #00e5ff; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px;">0</span>
+                            </div>
+                            <div class="mail-list" id="historyList">
+                                <!-- Se llena dinámicamente -->
+                            </div>
+                        </div>
+
+                        <!-- Detalle del Mensaje -->
+                        <div class="mail-detail-container" id="mailDetailContainer">
+                            <div class="mail-detail-empty" id="mailDetailEmpty">
+                                <i class="fas fa-envelope-open"></i>
+                                <p>Selecciona un mensaje para ver su contenido</p>
+                            </div>
+                            <div class="mail-detail-content" id="mailDetailContent" style="display: none;">
+                                <!-- Se llena dinámicamente -->
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -159,38 +196,63 @@
                 <!-- Vista Validación Paleta -->
                 <div id="paletteValidatorView" class="view-content">
                     <div class="palette-validator-container">
-                        <div class="palette-validator-header">
-                            <h3><i class="fas fa-palette"></i> Validación de Paleta</h3>
-                            <div class="plotter-selector">
-                                <label for="globalPlotter">🖨️ Plotter (1-17):</label>
-                                <select id="globalPlotter" class="plotter-select">
-                                    <option value="1">1</option><option value="2">2</option><option value="3">3</option>
-                                    <option value="4">4</option><option value="5">5</option><option value="6">6</option>
-                                    <option value="7">7</option><option value="8">8</option><option value="9">9</option>
-                                    <option value="10">10</option><option value="11">11</option><option value="12">12</option>
-                                    <option value="13">13</option><option value="14" selected>14</option>
-                                    <option value="15">15</option><option value="16">16</option><option value="17">17</option>
-                                </select>
+                        <div class="view-header">
+                            <div class="header-main">
+                                <h2 class="premium-title"><i class="fas fa-palette"></i> Validación de Paleta</h2>
+                                <p class="subtitle">Validación técnica de valores CMYK y canales especiales</p>
+                            </div>
+                            <div class="header-actions">
+                                <div class="plotter-selector premium-selector">
+                                    <label for="globalPlotter">🖨️ Plotter:</label>
+                                    <select id="globalPlotter" class="plotter-select">
+                                        <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                                        <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                                        <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+                                        <option value="10">10</option><option value="11">11</option><option value="12">12</option>
+                                        <option value="13">13</option><option value="14" selected>14</option>
+                                        <option value="15">15</option><option value="16">16</option><option value="17">17</option>
+                                    </select>
+                                </div>
+                                <button id="loadLibraryBtn" class="premium-btn secondary"><i class="fas fa-folder-open"></i> Mis Asignaciones</button>
                             </div>
                         </div>
-                        <div class="palette-validator-actions">
-                            <button id="loadLibraryBtn" class="btn-secondary">📥 Cargar TXT asignado</button>
-                            <button id="downloadTxtBtn" class="btn-primary" disabled>📥 Exportar TXT</button>
-                            <button id="exportEpsBtn" class="btn-primary" disabled>📄 Exportar EPS</button>
-                            <button id="sendToInboxBtn" class="btn-secondary" disabled>📤 Enviar a Bandeja</button>
+
+                        <!-- Panel de Acciones Superiores -->
+                        <div class="palette-validator-actions" style="margin-bottom: 2rem; background: rgba(30, 30, 44, 0.4); padding: 1rem; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                            <button id="downloadTxtBtn" class="premium-btn primary" disabled><i class="fas fa-file-export"></i> Exportar TXT</button>
+                            <button id="exportEpsBtn" class="premium-btn primary" disabled><i class="fas fa-file-pdf"></i> Exportar EPS</button>
+                            <button id="sendToInboxBtn" class="premium-btn secondary" disabled style="margin-left: auto;"><i class="fas fa-paper-plane"></i> Enviar a Bandeja</button>
                         </div>
-                        <div class="table-wrapper validator-table">
-                            <table class="data-table" id="validatorTable">
-                                <thead>
-                                    <tr><th style="width:40px">#</th><th>Nombre del Color</th><th style="width:80px">NK</th>
-                                    <th style="width:100px">Cian</th><th style="width:100px">Magenta</th><th style="width:100px">Yellow</th>
-                                    <th style="width:100px">Black</th><th style="width:100px">TQ</th><th style="width:100px">O</th>
-                                    <th style="width:100px">FY</th><th style="width:100px">FP</th><th style="width:100px">Estado</th><th style="width:80px">Acción</th>
-                                </thead>
-                                <tbody id="validatorTableBody">
-                                    <tr><td colspan="13" class="empty-state">Cargue un archivo TXT o use los botones para comenzar</td></tr>
-                                </tbody>
-                            </table>
+
+                        <!-- La grilla se inyecta dinámicamente o se maneja por JS -->
+                        <div class="validator-table-wrapper">
+                            <div class="validator-table-header">
+                                <div class="results-title"><i class="fas fa-table-list"></i> Matriz de Colorimetría</div>
+                                <div id="valStatsBadges" class="stats-badges"></div>
+                            </div>
+                            <div class="validator-table-scroll">
+                                <table class="premium-validator-table" id="validatorTable">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:40px">#</th>
+                                            <th>Color / NK</th>
+                                            <th style="width:90px">Cyan</th>
+                                            <th style="width:90px">Magenta</th>
+                                            <th style="width:90px">Yellow</th>
+                                            <th style="width:90px">Black</th>
+                                            <th style="width:90px">TQ</th>
+                                            <th style="width:90px">O</th>
+                                            <th style="width:90px">FY</th>
+                                            <th style="width:90px">FP</th>
+                                            <th class="text-center" style="width:100px">Estado</th>
+                                            <th class="text-center" style="width:80px">Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="validatorTableBody">
+                                        <tr><td colspan="12" class="empty-state">Seleccione un archivo TXT o una asignación para comenzar</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
