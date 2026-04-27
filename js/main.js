@@ -227,80 +227,6 @@ class AlphaColorMatch {
         if (resultsPanel) resultsPanel.style.display = 'none';
     }
 
-    showTaskSelectorModal() {
-        return new Promise((resolve) => {
-            const modal = document.createElement('div');
-            modal.className = 'modal-overlay active';
-            modal.style.zIndex = '10005';
-            
-            modal.innerHTML = `
-                <div class="modal-content" style="max-width: 700px; border: 2px solid #00e5ff; padding: 0;">
-                    <div class="modal-header" style="background: linear-gradient(90deg, #1e1e2e, #0f172a); border-bottom: 1px solid #00e5ff; padding: 2rem;">
-                        <h2 style="color: #00e5ff; margin: 0; text-align: center; font-size: 1.8rem;"><i class="fas fa-exchange-alt"></i> Selector de Función</h2>
-                        <p style="color: #9ca3af; text-align: center; margin-top: 10px;">¿Qué tipo de validación deseas realizar?</p>
-                    </div>
-                    <div class="modal-body" style="padding: 2.5rem; display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; background: #0c0c12;">
-                        
-                        <!-- OPCIÓN SIMPLE -->
-                        <div class="task-option" id="selectSimple" style="cursor: pointer; background: rgba(251, 191, 36, 0.05); border: 1px solid #fbbf24; padding: 2rem; border-radius: 12px; transition: all 0.3s ease; text-align: center;">
-                            <div style="font-size: 3rem; color: #fbbf24; margin-bottom: 1rem;"><i class="fas fa-check-double"></i></div>
-                            <h3 style="color: white; margin-bottom: 10px;">Comparación 1:1 (Simple)</h3>
-                            <p style="color: #9ca3af; font-size: 0.85rem; line-height: 1.4;">Validar que ambos archivos sean 100% idénticos en Nombres y CMYK.</p>
-                        </div>
-
-                        <!-- OPCIÓN FUSIÓN -->
-                        <div class="task-option" id="selectFusion" style="cursor: pointer; background: rgba(0, 229, 255, 0.05); border: 1px solid #00e5ff; padding: 2rem; border-radius: 12px; transition: all 0.3s ease; text-align: center;">
-                            <div style="font-size: 3rem; color: #00e5ff; margin-bottom: 1rem;"><i class="fas fa-code-merge"></i></div>
-                            <h3 style="color: white; margin-bottom: 10px;">Fusión / Linearización</h3>
-                            <p style="color: #9ca3af; font-size: 0.85rem; line-height: 1.4;">Auditar un archivo de cambios y unirlo a un Master conservando la base.</p>
-                        </div>
-
-                    </div>
-                    <div class="modal-footer" style="padding: 1rem; text-align: center; background: rgba(0,0,0,0.3);">
-                        <button class="skip-selector" style="background: transparent; color: #4b5563; border: none; cursor: pointer; font-size: 0.8rem;">Cerrar sin cambiar</button>
-                    </div>
-                </div>
-            `;
-
-            document.body.appendChild(modal);
-
-            const selectOption = (mode) => {
-                const radio = document.getElementById(mode === 'fusion' ? 'modeFusion' : 'modeSimple');
-                if (radio) {
-                    radio.checked = true;
-                    this.updateModeUI(mode);
-                }
-                modal.classList.remove('active');
-                setTimeout(() => modal.remove(), 300);
-                resolve(mode);
-            };
-
-            modal.querySelector('#selectFusion').onclick = () => selectOption('fusion');
-            modal.querySelector('#selectSimple').onclick = () => selectOption('simple');
-            modal.querySelector('.skip-selector').onclick = () => {
-                modal.classList.remove('active');
-                setTimeout(() => modal.remove(), 300);
-                resolve(null);
-            };
-
-            // Efectos hover
-            modal.querySelectorAll('.task-option').forEach(opt => {
-                opt.onmouseenter = () => {
-                    opt.style.transform = 'translateY(-5px)';
-                    opt.style.boxShadow = '0 10px 20px rgba(0,0,0,0.4)';
-                    opt.style.borderColor = '#00e5ff';
-                };
-                opt.onmouseleave = () => {
-                    opt.style.transform = 'translateY(0)';
-                    opt.style.boxShadow = 'none';
-                    if (opt.id !== 'selectFusion' || localStorage.getItem('compareMode') !== 'fusion') {
-                        opt.style.borderColor = '#2d3748';
-                    }
-                };
-            });
-        });
-    }
-
     keepAllMasterItems() {
         if (!this.results || this.results.length === 0) return;
         
@@ -455,7 +381,7 @@ class AlphaColorMatch {
         }
         
         console.log('🔍 Comparando archivos...');
-        const mode = localStorage.getItem('compareMode') || 'simple';
+        const mode = 'simple'; // Forzado a modo simple por auditoría de flujo
         
         this.selectedPending.clear();
         this.deletedPending.clear();
@@ -464,11 +390,15 @@ class AlphaColorMatch {
         
         this.results = compareLogic(this.primaryData, this.secondaryData, mode);
         
-        // Si es modo fusión, lanzar el asistente de decisiones
-        if (mode === 'fusion') {
-            window.showNotification('Iniciando Asistente', 'Resuelve los conflictos paso a paso.', 'info');
-            await showFusionWizard(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
-        }
+        // --- AUDITORÍA FINAL: AUTO-AGREGAR MAESTRO ---
+        // Si el color está en el principal pero no en el secundario, 
+        // se agrega solo para no obligar al usuario a hacer miles de clics.
+        this.results.forEach(item => {
+            if (item.matchType === 'pending_primary') {
+                this.selectedPending.add(item.id);
+            }
+        });
+        // ---------------------------------------------
 
         this.logComparisonSession();
         renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
@@ -719,10 +649,7 @@ class AlphaColorMatch {
             item.addEventListener('click', () => {
                 const viewName = item.dataset.view;
                 if (viewName && this.auth.hasPermission(viewName)) {
-                    // Solo mostrar el modal de modo si es clic manual en Comparar
-                    if (viewName === 'comparator') {
-                        this.showTaskSelectorModal();
-                    }
+                    // Modal de selección eliminado - flujo directo a vista
                     switchView(viewName);
                 }
             });

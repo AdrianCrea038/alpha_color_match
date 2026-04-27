@@ -86,59 +86,74 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 0.8rem;
+    table-layout: fixed; /* Forzamos el control de anchos */
 }
 
 .premium-validator-table th {
-    text-align: left;
-    padding: 1rem 0.75rem;
-    background: rgba(10, 10, 18, 0.6);
+    text-align: center;
+    padding: 0.75rem 0.05rem;
+    background: rgba(10, 10, 18, 0.9);
     color: #94a3b8;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    font-size: 0.7rem;
+    font-size: 0.6rem;
     position: sticky;
     top: 0;
     z-index: 20;
+    border-bottom: 2px solid rgba(0, 229, 255, 0.2);
 }
 
 .premium-validator-table td {
-    padding: 0.75rem;
+    padding: 0.3rem 0.05rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.03);
     vertical-align: middle;
 }
 
-/* Rows & Interactivity */
-.premium-validator-table tr:hover {
-    background: rgba(255, 255, 255, 0.02);
+/* Columna # (Mínima) */
+.premium-validator-table th:nth-child(1),
+.premium-validator-table td:nth-child(1) {
+    width: 25px;
+    padding-left: 0.2rem;
+    text-align: left;
+    color: #fbbf24;
 }
 
-.premium-validator-table tr.locked-row {
-    background: rgba(16, 185, 129, 0.05);
+/* Columna Nombre (Pegada a la izquierda y compacta) */
+.premium-validator-table th:nth-child(2),
+.premium-validator-table td:nth-child(2) {
+    width: 110px;
+    text-align: left;
+    padding-left: 0.2rem;
 }
 
-.premium-validator-table tr.locked-row td {
-    border-bottom: 1px solid rgba(16, 185, 129, 0.1);
-}
+/* Las columnas de valores se reparten TODO el resto del espacio */
+/* Cyan, Magenta, Yellow, Black, TQ, O, etc. */
 
-/* Inputs Premium */
+/* Inputs Premium - Ahora son RECTÁNGULOS LARGOS */
 .table-input {
-    width: 100%;
-    background: rgba(10, 10, 18, 0.5);
+    width: 98%;
+    background: rgba(0, 0, 0, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    padding: 0.5rem;
-    color: #fff;
-    font-size: 0.75rem;
-    font-family: 'Fira Code', monospace;
+    border-radius: 4px;
+    padding: 0.75rem 0.1rem;
+    color: #00e5ff;
+    font-size: 0.95rem; /* Más grande para legibilidad */
+    font-family: 'JetBrains Mono', monospace;
     transition: all 0.2s;
     text-align: center;
+    font-weight: 600;
+    display: block;
+    margin: 0 auto;
 }
 
 .table-input:focus {
     outline: none;
     border-color: #00e5ff;
-    background: rgba(0, 229, 255, 0.05);
+    background: rgba(0, 229, 255, 0.2);
+    box-shadow: 0 0 20px rgba(0, 229, 255, 0.4);
+    transform: scaleY(1.1) scaleX(1.02); /* Crece un poco más */
+    z-index: 100;
+    position: relative;
 }
 
 .table-input:disabled {
@@ -223,4 +238,18 @@
     .comparator-grid {
         grid-template-columns: 1fr;
     }
+}
+
+/* ============================================ */
+/* COLUMN TOGGLE - Hide TQ, O, FY, FP */
+/* ============================================ */
+.premium-validator-table.hide-extra th:nth-child(7),
+.premium-validator-table.hide-extra td:nth-child(7),
+.premium-validator-table.hide-extra th:nth-child(8),
+.premium-validator-table.hide-extra td:nth-child(8),
+.premium-validator-table.hide-extra th:nth-child(9),
+.premium-validator-table.hide-extra td:nth-child(9),
+.premium-validator-table.hide-extra th:nth-child(10),
+.premium-validator-table.hide-extra td:nth-child(10) {
+    display: none;
 }

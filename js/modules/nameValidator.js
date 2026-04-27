@@ -237,21 +237,6 @@ function showCorrectionModal(colorData, index, totalInvalid, suggestedNk = '', e
             const finalNk = manualNkInput.value.trim().toUpperCase();
             const newFull = finalNk ? `${finalBase} ${finalNk}` : finalBase;
 
-            // --- RESTAURADO: Preguntar si se agrega a la base de datos ---
-            const validSet = getValidNamesSet();
-            if (finalBase && !validSet.has(finalBase)) {
-                if (confirm(`⚠️ "${finalBase}" no está en la lista oficial.\n\n¿Desea agregarlo a la base de datos permanentemente?`)) {
-                    const res = await addCustomValidColorName(finalBase, appInstance?.auth?.getCurrentUser()?.username || 'usuario');
-                    if (res && res.success) {
-                        // Actualizar catálogo local inmediatamente
-                        if (!window.ALL_VALID_COLOR_NAMES) window.ALL_VALID_COLOR_NAMES = [];
-                        window.ALL_VALID_COLOR_NAMES.push(finalBase);
-                        window.showNotification('Éxito', `"${finalBase}" agregado al catálogo oficial`, 'success');
-                    }
-                }
-            }
-            // ----------------------------------------------------------
-
             modal.remove();
             resolve({ newBaseName: finalBase, newNk: finalNk, newFullName: newFull, reason: modal.querySelector('#correctionReason').value });
         };
@@ -264,9 +249,13 @@ export async function validateAndCorrectRecords(records, fileType, onCorrectionA
     const correctionsNeeded = [];
     const duplicateContext = contextRecords || correctedRecords;
     
+    // El Principal (Master) solo se detiene por errores técnicos (paréntesis, duplicados)
+    // El Secundario se valida contra catálogo oficial
+    const ignoreCatalog = (fileType === 'primary');
+    
     for (let i = 0; i < correctedRecords.length; i++) {
         const record = correctedRecords[i];
-        if (!isValidColorName(record.baseName, record.name) || !record.nk) {
+        if (!isValidColorName(record.baseName, record.name, ignoreCatalog) || !record.nk) {
             correctionsNeeded.push({ record: record, index: i });
         }
     }

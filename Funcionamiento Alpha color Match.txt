@@ -1,5 +1,5 @@
 ================================================================================
-          MANUAL DE FUNCIONAMIENTO - ALPHA COLOR MATCH 2 (V2.1)
+          MANUAL DE FUNCIONAMIENTO - ALPHA COLOR MATCH 2 (V3.0)
 ================================================================================
 
 Este documento describe la arquitectura, lógica y flujo de datos del sistema
@@ -25,50 +25,59 @@ en planta a través de un Dashboard Ejecutivo de alto rendimiento.
       - Gráficos: 
         1. Resumen de Período (Dona): Participación por usuario.
         2. Comparativa (Barras): Rendimiento individual por día/semana/mes.
-      - Modo Proyección: Interfaz minimalista diseñada para monitores de planta,
-        ocultando menús y filtros para enfoque total en el avance operativo.
+      - Modo Proyección: Interfaz minimalista diseñada para monitores de planta.
       - Optimización Anti-Flicker: Implementa detección de cambios por "Hash".
-        Si los datos no han cambiado en Supabase, la interfaz NO se recarga.
 
    B. BANDEJA DE ENTRADA (INBOX)
       - Almacenamiento: Tabla 'inbox' en Supabase.
-      - Funcionalidad: Los usuarios envían resultados de validación a otros
-        departamentos. Los mensajes incluyen el contenido completo del .txt.
+      - Funcionalidad: Gestión de mensajes con contenido técnico .txt.
       - Persistencia: Protegida contra limpieza de caché. Respaldo local activo.
 
    C. COMPARADOR Y VALIDADOR DE NOMBRES
-      - Motor de Comparación: Identifica coincidencias Exactas, Equivalentes
-        y Pendientes entre archivos Principales y Secundarios.
+      - Motor de Comparación: Identifica coincidencias Exactas y Equivalentes.
       - Grupos de Equivalencia: Gestionados en la tabla 'equivalency_groups'.
-        Permite que nombres como "NEON GREEN" y "GREEN NEON" sean equivalentes.
-      - Smart Modal: Permite corregir nombres mal escritos al momento de cargar.
+      - Smart Modal: Corrección de nombres mal escritos en tiempo real.
 
    D. DESARROLLO (DEVELOPMENT)
-      - Permite agregar nuevos colores a la base de datos maestra.
-      - Integración con NKs: Sugiere códigos NK existentes de la 'library_txt'.
+      - Gestión de la base de datos maestra de colores y NKs.
+      - Integración con la 'library_txt' de Supabase.
+
+   E. AUDITOR DE LINEARIZACIÓN (NUEVO V3.0)
+      - Propósito: Auditoría técnica exhaustiva de archivos .txt.
+      - Lógica de Validación Estricta:
+        1. Cruce vs Maestro: Búsqueda automática en Supabase por NK.
+        2. Consistencia de Complementarios: Validación "Nombre + NK".
+        3. Limpieza Profunda: Ignora prefijos (2DH, TM) y ruidos técnicos.
+        4. Rango CMYK: Bloquea y alerta sobre valores > 100%.
+      - Sistema de Diagnóstico por Colores:
+        🔴 Rojo: Duplicados y Errores de Rango (>100).
+        💖 Rosa: Diferencia contra el Maestro de la Base de Datos.
+        🟣 Púrpura: Inconsistencia entre Colores Complementarios.
+        🟠 Naranja: Color inexistente en el Catálogo oficial.
+        🟡 Amarillo: Error de Nomenclatura (Paréntesis con números).
+        🔵 Azul: Registro sin código NK detectado.
+      - Interfaz de Auditoría:
+        - Filtrado Interactivo: Las insignias de error actúan como botones.
+        - Alta Resolución: Comparación forzada a 6 decimales.
 
 4. SISTEMA DE SEGURIDAD Y BACKUP
 --------------------------------
-- Backup Automático: Ejecuta una descarga completa de la base de datos cada
-  día a las 5:40 PM (17:40 hrs).
+- Backup Automático: Ejecuta descarga diaria a las 5:40 PM (17:40 hrs).
 - Tablas Incluidas: usuarios, assignments, validation_progress, library_txt,
   valid_color_names, inbox, equivalency_groups.
-- Versión de Datos: 1.1 (JSON format).
 
 5. CONFIGURACIÓN VISUAL (AESTHETICS)
 ------------------------------------
 - Tema: Dark Mode con acentos en Electric Neon Green (#00ff88).
-- Botones: Implementan feedback táctil (scale 0.95) y glows RGB.
+- Botones: Feedback táctil y efectos glow RGB.
 
 6. REGLAS PARA FUTUROS CAMBIOS
 ------------------------------
-1. Siempre usar .update() en Chart.js en lugar de destruir los gráficos.
-2. No usar innerHTML para actualizaciones frecuentes; preferir textContent
-   o comparadores de nodos para evitar parpadeos visuales.
-3. Al modificar la lógica de la bandeja, asegurar compatibilidad con los
-   campos 'is_read' y 'created_at' de la base de datos.
+1. Mantener la limpieza profunda (extractBaseName) para validaciones.
+2. No permitir exportaciones de archivos con errores críticos detectados.
+3. Asegurar que las equivalencias se validen siempre bajo el mismo NK.
 
 ================================================================================
 Desarrollado por: Antigravity (Google Deepmind - Advanced Agentic Coding)
-Fecha de entrega: 19 de Abril, 2026
+Fecha de actualización: 23 de Abril, 2026
 ================================================================================

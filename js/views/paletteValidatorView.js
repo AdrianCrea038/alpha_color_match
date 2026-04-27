@@ -23,6 +23,9 @@ export class PaletteValidatorView {
         this.uploadToDbBtn = null;
         this.plotterSelect = null;
         this.assignmentsListDiv = null;
+        this.toggleExtraBtn = null;
+        
+        this.hideExtraColumns = localStorage.getItem('paletteHideExtra') === 'true';
         
         this.epsHelper = new EPSView(app);
         
@@ -37,6 +40,7 @@ export class PaletteValidatorView {
         this.loadLibraryBtn = document.getElementById('loadLibraryBtn');
         this.uploadToDbBtn = document.getElementById('uploadToDbBtn');
         this.plotterSelect = document.getElementById('globalPlotter');
+        this.toggleExtraBtn = document.getElementById('toggleExtraChannelsBtn');
         
         if (!this.tableBody) return;
         
@@ -76,8 +80,49 @@ export class PaletteValidatorView {
         if (this.sendToInboxBtn) {
             this.sendToInboxBtn.onclick = () => this.showSendToInboxModal();
         }
+
+        if (this.toggleExtraBtn) {
+            this.toggleExtraBtn.onclick = () => this.toggleExtraChannels();
+            this.updateToggleBtnUI();
+        }
         
         this.resetTable();
+    }
+
+    toggleExtraChannels() {
+        this.hideExtraColumns = !this.hideExtraColumns;
+        localStorage.setItem('paletteHideExtra', this.hideExtraColumns);
+        
+        const table = document.getElementById('validatorTable');
+        if (table) {
+            if (this.hideExtraColumns) {
+                table.classList.add('hide-extra');
+            } else {
+                table.classList.remove('hide-extra');
+            }
+        }
+        
+        this.updateToggleBtnUI();
+    }
+
+    updateToggleBtnUI() {
+        if (!this.toggleExtraBtn) return;
+        if (this.hideExtraColumns) {
+            this.toggleExtraBtn.innerHTML = '<i class="fas fa-eye"></i> Mostrar TQ-O-FY-FP';
+            this.toggleExtraBtn.style.borderColor = '#4ade80';
+            this.toggleExtraBtn.style.color = '#4ade80';
+        } else {
+            this.toggleExtraBtn.innerHTML = '<i class="fas fa-eye-slash"></i> Ocultar TQ-O-FY-FP';
+            this.toggleExtraBtn.style.borderColor = '#a78bfa';
+            this.toggleExtraBtn.style.color = '#a78bfa';
+        }
+
+        // Aplicar clase a la tabla si ya existe
+        const table = document.getElementById('validatorTable');
+        if (table) {
+            if (this.hideExtraColumns) table.classList.add('hide-extra');
+            else table.classList.remove('hide-extra');
+        }
     }
 
     async loadAssignedTxt() {
