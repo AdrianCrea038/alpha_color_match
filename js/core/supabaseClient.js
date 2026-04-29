@@ -358,4 +358,58 @@ export async function addMasterNk(nkCode, user = 'sistema') {
         return { success: false, error: error.message };
     }
 }
+
+// ============================================
+// FUNCIONES PARA GRUPOS DE EQUIVALENCIA
+// ============================================
+
+export async function getEquivalencyGroupsFromDB() {
+    try {
+        console.log('📡 Consultando tabla maestra: equivalencias...');
+        // Intentamos cargar de 'equivalencias' que es la fuente sugerida
+        const { data, error } = await supabase
+            .from('equivalencias')
+            .select('*');
+
+        if (error) {
+            console.warn('⚠️ No se pudo leer de "equivalencias", intentando con "equivalency_groups"...');
+            const fallback = await supabase.from('equivalency_groups').select('*');
+            if (fallback.error) throw fallback.error;
+            return processGroupData(fallback.data);
+        }
+
+        return processGroupData(data);
+    } catch (error) {
+        console.error('❌ Error crítico cargando equivalencias:', error.message);
+        return [];
+    }
+}
+
+function processGroupData(data) {
+    if (!data || data.length === 0) return [];
+    
+    const result = [];
+    data.forEach(item => {
+        // Priorizar grupo_id de tu tabla
+        const code = item.grupo_id || item.grupo || item.group_code || item.group_id || item.code || 'UNKNOWN';
+        
+        // Manejar el array 'colores' que vimos en la foto
+        let names = [];
+        if (Array.isArray(item.colores)) {
+            names = item.colores.map(n => n.toString().trim().toUpperCase());
+        } else {
+            // Fallback por si hay filas con formato antiguo (texto simple)
+            const singleName = item.nombre || item.color_name || item.name || item.color || '';
+            if (singleName) names = [singleName.toString().trim().toUpperCase()];
+        }
+        
+        if (names.length > 0 && code !== 'UNKNOWN') {
+            const cleanCode = code.toString().trim().toUpperCase();
+            result.push([cleanCode, ...names]);
+        }
+    });
+
+    console.log(`✅ Sincronizados ${result.length} grupos desde la base de datos.`);
+    return result;
+}
 

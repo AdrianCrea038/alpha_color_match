@@ -32,6 +32,13 @@ export function renderResults(results, groupSelections, selectedPending, deleted
     const selectedCount = selectedPending.size;
     const deletedCount = deletedPending.size;
     
+    const addAllSecBtn = document.getElementById('addAllSecondaryBtn');
+    if (addAllSecBtn) {
+        addAllSecBtn.disabled = pendingSecondary === 0;
+        addAllSecBtn.style.opacity = pendingSecondary === 0 ? '0.5' : '1';
+        addAllSecBtn.style.cursor = pendingSecondary === 0 ? 'not-allowed' : 'pointer';
+    }
+
     statsContainer.innerHTML = `
         <span class="badge match" data-filter="exact" style="cursor:pointer; opacity: ${showExact ? '1' : '0.4'};">✅ Exactas: ${exactMatches}</span>
         <span class="badge secondary" data-filter="equivalent" style="cursor:pointer; opacity: ${showEquivalent ? '1' : '0.4'};">🔄 Equivalentes: ${equivalentMatches}</span>

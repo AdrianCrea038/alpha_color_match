@@ -153,9 +153,14 @@
                     </div>
 
                     <div class="results-panel" id="resultsPanel" style="display: none;">
-                        <div class="results-header">
+                        <div class="results-header" style="display: flex; justify-content: space-between; align-items: center;">
                             <h3>📊 Resultados de comparación</h3>
-                            <div class="stats-badge" id="statsBadges"></div>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <button id="addAllSecondaryBtn" class="premium-btn" style="background: #10b981; font-size: 0.75rem; padding: 0.4rem 1rem;">
+                                    <i class="fas fa-plus-double"></i> Agregar todos los Nuevos
+                                </button>
+                                <div class="stats-badge" id="statsBadges"></div>
+                            </div>
                         </div>
                         <table class="results-table">
                             <thead>

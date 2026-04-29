@@ -1,7 +1,7 @@
 // js/main.js
 import { Auth } from './core/auth.js';
 import { loadFile, parseTxtContent } from './modules/fileLoader.js';
-import { validateAndCorrectRecords, setAppInstance } from './modules/nameValidator.js';
+import { validateAndCorrectRecords, setAppInstance, ensureValidColorCatalogLoaded } from './modules/nameValidator.js';
 import { compareFiles as compareLogic } from './modules/comparator.js';
 import { renderResults } from './modules/resultsRenderer.js';
 import { exportResults } from './modules/exporter.js';
@@ -103,11 +103,14 @@ class AlphaColorMatch {
 
     async loadMasterData() {
         try {
-            // Cargar NKs maestros
+            // Sincronizar catálogos y EQUIVALENCIAS desde DB (Supabase)
+            console.log('📡 Sincronizando catálogos maestros y equivalencias...');
+            await ensureValidColorCatalogLoaded();
+            
+            // Cargar NKs maestros (Fallback/Seguridad)
             window.ALL_MASTER_NKS = await getAllMasterNks();
-            // Cargar nombres de colores válidos
-            window.ALL_VALID_COLOR_NAMES = await getCustomValidColorNames();
-            console.log(`📡 Catálogos cargados: ${window.ALL_MASTER_NKS.length} NKs y ${window.ALL_VALID_COLOR_NAMES.length} nombres.`);
+            
+            console.log(`✅ Catálogos y Equivalencias sincronizados correctamente.`);
         } catch (error) {
             console.error('❌ Error cargando catálogos:', error);
             window.ALL_MASTER_NKS = [];
@@ -191,14 +194,19 @@ class AlphaColorMatch {
         
         if (primaryInput) primaryInput.addEventListener('change', (e) => this.loadPrimaryFile(e));
         if (secondaryInput) secondaryInput.addEventListener('change', (e) => this.loadSecondaryFile(e));
-        if (compareBtn) compareBtn.addEventListener('click', () => this.compareFiles());
         if (exportBtn) exportBtn.addEventListener('click', () => this.exportFiles());
         if (replaceAllSecondaryBtn) replaceAllSecondaryBtn.addEventListener('click', () => this.replaceAllWithSecondary());
         if (clearCacheBtn) clearCacheBtn.addEventListener('click', () => this.clearCache());
         
         const keepAllMasterBtn = document.getElementById('keepAllMasterBtn');
-        if (keepAllMasterBtn) {
-            keepAllMasterBtn.onclick = () => this.keepAllMasterItems();
+        const addAllSecBtn = document.getElementById('addAllSecondaryBtn');
+
+        if (compareBtn) {
+            compareBtn.onclick = () => this.compareFiles();
+        }
+        
+        if (addAllSecBtn) {
+            addAllSecBtn.onclick = () => this.addAllSecondaryItems();
         }
     }
 
@@ -244,6 +252,42 @@ class AlphaColorMatch {
         window.showNotification('Acción Masiva', `Se conservarán ${count} colores del archivo Master.`, 'success');
     }
     
+    addAllSecondaryItems() {
+        if (!this.results || this.results.length === 0) return;
+        
+        const btn = document.getElementById('addAllSecondaryBtn');
+        const originalContent = btn.innerHTML;
+        
+        let count = 0;
+        for (const item of this.results) {
+            if (item.matchType === 'pending_secondary') {
+                if (!this.selectedPending.has(item.id)) {
+                    this.selectedPending.add(item.id);
+                    this.deletedPending.delete(item.id);
+                    count++;
+                }
+            }
+        }
+        
+        // Feedback visual en el botón
+        if (btn) {
+            btn.innerHTML = '<i class="fas fa-check-circle"></i> ¡LISTO! ' + count + ' Agregados';
+            btn.style.background = '#059669'; // Verde más oscuro/intenso
+            btn.style.transform = 'scale(1.05)';
+            
+            setTimeout(() => {
+                btn.style.transform = '';
+                // El renderResults se encargará de deshabilitarlo si ya no hay pendientes
+                renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
+            }, 600);
+        } else {
+            renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
+        }
+        
+        this.validateExportReady();
+        window.showNotification('Acción Masiva', `Se agregaron ${count} colores nuevos satisfactoriamente.`, 'success');
+    }
+
     async loadPrimaryFile(event) {
         const file = event.target.files[0];
         if (!file) return;

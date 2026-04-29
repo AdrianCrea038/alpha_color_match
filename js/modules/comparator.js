@@ -48,36 +48,35 @@ export function compareFiles(primaryData, secondaryData, mode = 'fusion') {
         for (const pc of primaryColors) {
             const eqGroup = getAllEquivalentNames(pc.baseName);
             const groupKey = eqGroup[0];
-            if (!groups.has(groupKey)) groups.set(groupKey, { primarios: [], secundarios: [], groupKey });
-            groups.get(groupKey).primarios.push(pc);
+            // Crear una clave única que combine el grupo de equivalencia y el CMYK
+            const cmykKey = (pc.cmyk || []).map(v => parseFloat(v).toFixed(2)).join('|');
+            const uniqueKey = `${groupKey}_${cmykKey}`;
+            
+            if (!groups.has(uniqueKey)) groups.set(uniqueKey, { primarios: [], secundarios: [], groupKey, cmykKey });
+            groups.get(uniqueKey).primarios.push(pc);
         }
         
         for (const sc of secondaryColors) {
             const eqGroup = getAllEquivalentNames(sc.baseName);
             const groupKey = eqGroup[0];
-            if (!groups.has(groupKey)) groups.set(groupKey, { primarios: [], secundarios: [], groupKey });
-            groups.get(groupKey).secundarios.push(sc);
+            const cmykKey = (sc.cmyk || []).map(v => parseFloat(v).toFixed(2)).join('|');
+            const uniqueKey = `${groupKey}_${cmykKey}`;
+            
+            if (!groups.has(uniqueKey)) groups.set(uniqueKey, { primarios: [], secundarios: [], groupKey, cmykKey });
+            groups.get(uniqueKey).secundarios.push(sc);
         }
         
-        for (const [groupKey, group] of groups) {
-            const { primarios, secundarios } = group;
+        for (const [uniqueKey, group] of groups) {
+            const { primarios, secundarios, groupKey } = group;
             const groupId = `group_${nk}_${groupCounter++}`;
             const groupDisplayId = getGroupIdForColor(groupKey);
             
             if (primarios.length && secundarios.length) {
+                // Si ambos existen y están en este grupo, es porque tienen el mismo CMYK (por la uniqueKey)
                 for (const primary of primarios) {
                     for (const secondary of secundarios) {
-                        let isExact = false;
+                        const isExact = primary.baseName === secondary.baseName;
                         
-                        if (mode === 'simple') {
-                            const isNameMatch = primary.baseName === secondary.baseName;
-                            const isNkMatch = (primary.nk || '').trim().toUpperCase() === (secondary.nk || '').trim().toUpperCase();
-                            const isCmykMatch = (primary.cmyk || []).every((val, idx) => Math.abs(val - (secondary.cmyk?.[idx] || 0)) < 0.01);
-                            isExact = isNameMatch && isNkMatch && isCmykMatch;
-                        } else {
-                            isExact = primary.baseName === secondary.baseName;
-                        }
-
                         results.push({
                             id: `primary_${primary.tempId || primary.id || Math.random()}`,
                             groupId,
@@ -147,21 +146,23 @@ function compareCiclico(primaryData, secondaryData) {
     const sMap = new Map();
     const results = [];
     
-    // Agrupar por firma única (Familia de Equivalentes + NK)
+    // Agrupar por grupo de equivalencia (DB) + NK
     primaryData.forEach(r => {
         const cleanBase = (r.baseName || r.name || '').replace(/\s*\([^)]*\)/g, '').toUpperCase().trim();
-        const equivalents = getAllEquivalentNames(cleanBase);
-        const groupKey = equivalents[0];
-        const key = `${groupKey}|${(r.nk || '').trim().toUpperCase()}`;
+        const groupId = getGroupIdForColor(cleanBase) || cleanBase;
+        const nk = (r.nk || '').trim().toUpperCase();
+        const key = `${groupId}|${nk}`;
+        
         if (!pMap.has(key)) pMap.set(key, []);
         pMap.get(key).push(r);
     });
 
     secondaryData.forEach(r => {
         const cleanBase = (r.baseName || r.name || '').replace(/\s*\([^)]*\)/g, '').toUpperCase().trim();
-        const equivalents = getAllEquivalentNames(cleanBase);
-        const groupKey = equivalents[0];
-        const key = `${groupKey}|${(r.nk || '').trim().toUpperCase()}`;
+        const groupId = getGroupIdForColor(cleanBase) || cleanBase;
+        const nk = (r.nk || '').trim().toUpperCase();
+        const key = `${groupId}|${nk}`;
+        
         if (!sMap.has(key)) sMap.set(key, []);
         sMap.get(key).push(r);
     });

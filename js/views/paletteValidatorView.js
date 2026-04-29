@@ -1103,18 +1103,66 @@ export class PaletteValidatorView {
     }
     
     getExportData() {
+        console.log('📦 Iniciando preparación de datos para TXT...');
         const exportItems = [];
-        const processedColors = new Set();
-        for (const color of this.colors) {
-            const key = `${color.name}|${color.nk}`;
-            if (processedColors.has(key)) continue;
-            processedColors.add(key);
-            exportItems.push({
-                name: `${color.name} ${color.nk}`,
-                cmyk: [color.cmyk.c, color.cmyk.m, color.cmyk.y, color.cmyk.k],
-                lab: [color.lab.l, color.lab.a, color.lab.b]
-            });
+        const processedNames = new Set();
+        
+        // Funciones de ayuda desde el ámbito global
+        const _getAllEquivalentNames = window.getAllEquivalentNames;
+        const _getGroupIdForColor = window.getGroupIdForColor;
+
+        if (typeof _getAllEquivalentNames !== 'function') {
+            console.error('❌ Error: La función getAllEquivalentNames no está disponible.');
         }
+
+        this.colors.forEach(color => {
+            if (!color.name) return;
+
+            // 1. Obtener la familia completa para este color
+            let family = [];
+            if (typeof _getAllEquivalentNames === 'function') {
+                family = _getAllEquivalentNames(color.name);
+            }
+            
+            // Si no hay familia o la función falló, al menos exportamos el color actual
+            if (!family || family.length === 0) {
+                family = [color.name];
+            }
+
+            console.log(`🔍 Procesando color: ${color.name}. Familia encontrada: ${family.join(', ')}`);
+
+            // 2. Por cada miembro de la familia, crear una entrada en el TXT
+            family.forEach(member => {
+                const upperMember = member.toUpperCase().trim();
+                
+                // Evitamos duplicar nombres en el mismo archivo TXT
+                if (!processedNames.has(upperMember)) {
+                    processedNames.add(upperMember);
+                    
+                    // Armamos el nombre final con el NK original del color validado
+                    const finalName = `${member} ${color.nk}`;
+                    
+                    exportItems.push({
+                        name: finalName,
+                        baseName: member,
+                        cmyk: [color.cmyk.c, color.cmyk.m, color.cmyk.y, color.cmyk.k],
+                        lab: [color.lab.l, color.lab.a, color.lab.b],
+                        groupId: typeof _getGroupIdForColor === 'function' ? _getGroupIdForColor(member) : 'ZZZ'
+                    });
+                }
+            });
+        });
+        
+        // 3. ORDENAR: Agrupar por familia (groupId) y luego por nombre
+        exportItems.sort((a, b) => {
+            const groupA = a.groupId || 'ZZZ';
+            const groupB = b.groupId || 'ZZZ';
+            
+            if (groupA !== groupB) return groupA.localeCompare(groupB);
+            return a.name.localeCompare(b.name);
+        });
+
+        console.log(`✅ Preparación completa. ${exportItems.length} registros listos para el TXT.`);
         return exportItems;
     }
     
