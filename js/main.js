@@ -691,36 +691,45 @@ class AlphaColorMatch {
         this.updateInboxBell();
     }
 
-    logComparisonSession() {
+    async logComparisonSession() {
         const unmatched = this.results.filter(item =>
             item.matchType === 'pending_primary' || item.matchType === 'pending_secondary'
         ).length;
         
         const addedColors = Array.from(this.selectedPending).filter(id => id.startsWith('pending_secondary')).length;
-        
-        // Recuperar contadores de la última carga de archivos
         const lastCargas = JSON.parse(localStorage.getItem('lastFileLoadStats') || '{"corrections":0, "duplicates":0}');
+        const totalColors = this.primaryData.length;
 
         const entry = {
-            id: `cmp_${Date.now()}`,
-            createdAt: new Date().toISOString(),
+            created_at: new Date().toISOString(),
             user: this.auth.getCurrentUser()?.username || 'usuario',
-            primaryFile: this.primaryFileName || 'principal',
-            secondaryFile: this.secondaryFileName || 'secundario',
-            unmatched,
-            addedColors,
+            primary_file: this.primaryFileName || 'principal',
+            secondary_file: this.secondaryFileName || 'secundario',
+            total_colors: totalColors,
+            unmatched: unmatched,
+            added_colors: addedColors,
             corrections: lastCargas.corrections || 0,
             duplicates: lastCargas.duplicates || 0,
-            totalRecords: this.primaryData.length + this.secondaryData.length
+            invalid_cmyk: lastCargas.invalidCmyk || 0
         };
 
+        // 1. Guardar en Supabase para Reportes Reales
+        try {
+            const { error } = await supabase.from('comparison_logs').insert(entry);
+            if (error) throw error;
+            console.log('✅ Auditoría guardada en la nube');
+        } catch (e) {
+            console.warn('⚠️ No se pudo guardar en DB, usando LocalStorage:', e.message);
+        }
+
+        // 2. Respaldo en LocalStorage (Legacy)
         let logs = [];
         try {
             logs = JSON.parse(localStorage.getItem('comparisonReportLogs') || '[]');
         } catch (e) {
             logs = [];
         }
-        logs.unshift(entry);
+        logs.unshift({ ...entry, id: `cmp_${Date.now()}`, primaryFile: entry.primary_file });
         if (logs.length > 2000) logs = logs.slice(0, 2000);
         localStorage.setItem('comparisonReportLogs', JSON.stringify(logs));
     }
