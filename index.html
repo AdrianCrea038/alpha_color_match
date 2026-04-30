@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Alpha Color Match - Comparador Profesional</title>
     <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="css/main.css">
     <link rel="stylesheet" href="css/components/sidebar.css">
     <link rel="stylesheet" href="css/views/creator.css">
@@ -23,8 +23,8 @@
     <div id="mainApp" class="app-wrapper">
         <div class="sidebar-menu">
             <div class="menu-item active" data-view="comparator" data-perm="comparator">
-                <i class="fas fa-code-compare"></i>
-                <span>Comparar</span>
+                <i class="fas fa-shield-check"></i>
+                <span>Auditoría</span>
             </div>
             <div class="menu-item" data-view="history" data-perm="history">
                 <i class="fas fa-inbox"></i>
@@ -33,10 +33,6 @@
             <div class="menu-item" data-view="paletteValidator" data-perm="paletteValidator">
                 <i class="fas fa-palette"></i>
                 <span>Validar Paleta</span>
-            </div>
-            <div class="menu-item" data-view="linearizationValidator" data-perm="linearization">
-                <i class="fas fa-microscope"></i>
-                <span>Auditoría</span>
             </div>
             <div class="menu-item" data-view="development" data-perm="development">
                 <i class="fas fa-paintbrush"></i>
@@ -77,28 +73,23 @@
                 <!-- Vista Comparador -->
                 <div id="comparatorView" class="view-content active">
                     <!-- Selector de Modo de Comparación -->
-                    <div class="mode-selector-container" style="display: flex; justify-content: center; gap: 2rem; margin-bottom: 2rem; background: rgba(30, 30, 44, 0.4); padding: 1.5rem; border-radius: 12px; border: 1px solid rgba(0, 229, 255, 0.2);">
-                        <div class="mode-option">
-                            <input type="radio" id="modeSimple" name="compareMode" value="simple" checked style="display: none;">
-                            <label for="modeSimple" class="mode-label">
-                                <i class="fas fa-arrows-alt-h"></i>
-                                <span>Comparación Simple</span>
-                                <small>Validación estricta de ambos archivos</small>
+                    <div class="mode-selector-card" style="margin-bottom: 1.5rem; background: rgba(30, 30, 44, 0.4); border: 1px solid rgba(0, 229, 255, 0.1); border-radius: 12px; padding: 1rem;">
+                        <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                            <span style="font-size: 0.85rem; color: #9ca3af; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Modo de Auditoría:</span>
+                            <label class="premium-radio">
+                                <input type="radio" name="compareMode" value="fusion" checked>
+                                <span class="radio-label"><i class="fas fa-layer-group"></i> Fusión (Unificar TXTs)</span>
                             </label>
-                        </div>
-                        <div class="mode-option">
-                            <input type="radio" id="modeFusion" name="compareMode" value="fusion" style="display: none;">
-                            <label for="modeFusion" class="mode-label">
-                                <i class="fas fa-code-merge"></i>
-                                <span>Fusión de Linearización</span>
-                                <small>Validar secundario y unir al Master</small>
+                            <label class="premium-radio">
+                                <input type="radio" name="compareMode" value="ciclico">
+                                <span class="radio-label"><i class="fas fa-sync-alt"></i> Estricta (Comparar Ciclo)</span>
                             </label>
                         </div>
                     </div>
 
                     <div class="upload-section">
                         <div class="upload-card">
-                            <h3>📁 Archivo Principal</h3>
+                            <h3>📁 Archivo Principal (Master)</h3>
                             <div class="upload-area">
                                 <input type="file" id="primaryFileInput" accept=".txt" class="file-input">
                                 <label for="primaryFileInput" class="file-label">Seleccionar archivo</label>
@@ -122,7 +113,6 @@
                     </div>
 
                     <div style="text-align: center; display: flex; gap: 1rem; justify-content: center; margin-bottom: 1rem; flex-wrap: wrap;">
-                        <button id="compareBtn" class="compare-btn">🔍 COMPARAR</button>
                         <button id="keepAllMasterBtn" class="compare-btn" style="background: #0099cc; display: none;">✅ Conservar todo el Master</button>
                         <button id="replaceAllSecondaryBtn" class="compare-btn" style="background: #b45309;">🔄 Actualización a valor secundario</button>
                         <button id="exportBtn" class="compare-btn" style="background: #15803d;" disabled>📥 EXPORTAR ARCHIVO</button>
@@ -137,7 +127,14 @@
 
                     <div id="validationMessage" class="validation-message" style="display: none;"></div>
 
-                    <div class="data-grid">
+                    <div class="data-section-header" style="margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="font-size: 1.1rem; color: #9ca3af;"><i class="fas fa-database"></i> Visualización de Archivos Cargados</h3>
+                        <button id="toggleDataGridBtn" class="toggle-btn" style="background: transparent; border: none; color: #00e5ff; cursor: pointer; font-size: 1.2rem;">
+                            <i class="fas fa-caret-down toggle-icon"></i>
+                        </button>
+                    </div>
+
+                    <div id="dataGridContainer" class="data-grid">
                         <div class="data-card">
                             <h3>📁 Datos Principal</h3>
                             <div class="data-list" id="primaryDataList">
@@ -168,6 +165,12 @@
                             </thead>
                             <tbody id="resultsTableBody"></tbody>
                         </table>
+                    </div>
+                    <!-- Sección Integrada: Auditoría de Archivo Único (Linearización) -->
+                    <div class="single-audit-integration" style="margin-top: 5rem; padding-top: 3rem; border-top: 2px dashed rgba(255,255,255,0.1);">
+                        <div id="linearizationValidatorView" style="display: block;">
+                            <!-- El contenido se inyecta dinámicamente por LinearizationValidatorView.js -->
+                        </div>
                     </div>
                 </div>
 

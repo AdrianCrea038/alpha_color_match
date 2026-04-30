@@ -147,80 +147,33 @@ export class LinearizationValidatorView {
                 .stat-badge-mini.yellow { background: rgba(234, 179, 8, 0.1); border-color: #eab308; color: #eab308; }
                 .stat-badge-mini.blue { background: rgba(59, 130, 246, 0.1); border-color: #3b82f6; color: #3b82f6; }
             </style>
-            <div class="view-header" style="margin-bottom: 2rem;">
-                <div class="header-main">
-                    <h2 class="premium-title"><i class="fas fa-microscope"></i> Auditoría de Linearización</h2>
-                    <p class="subtitle">Validación estricta y comparación cíclica de archivos de color</p>
-                </div>
-                <div class="header-actions">
-                    <button id="linResetBtn" class="premium-btn secondary"><i class="fas fa-undo"></i> Reiniciar</button>
-                    <button id="btnExportLin" class="premium-btn primary" disabled><i class="fas fa-file-export"></i> Exportar Auditado</button>
-                </div>
-            </div>
-
-            <div class="lin-dashboard-grid">
-                <!-- CARGA INDIVIDUAL -->
-                <div class="lin-card audit-card">
-                    <div class="lin-card-header">
-                        <div class="header-icon"><i class="fas fa-file-shield"></i></div>
-                        <div class="header-text">
-                            <h3>Carga Individual</h3>
-                            <p>Corrección automática y validación de NKs</p>
-                        </div>
+            <div id="singleAuditSection" class="lin-card audit-card" style="margin-top: 1rem; border: 1px solid rgba(255,255,255,0.05); background: rgba(30, 41, 59, 0.5);">
+                <div class="lin-card-header" style="border-bottom: 1px solid rgba(255,255,255,0.05); padding: 1rem;">
+                    <div class="header-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;"><i class="fas fa-file-shield"></i></div>
+                    <div class="header-text">
+                        <h3 style="margin:0; font-size: 1rem; color: #f1f5f9;">Validador Rápido de Archivo Único</h3>
+                        <p style="margin:0; font-size: 0.75rem; color: #9ca3af;">Revisión de NKs y corrección de nombres sin comparar</p>
                     </div>
-                    <div class="lin-card-body">
-                        <div class="premium-upload-zone" id="linUploadZone">
-                            <input type="file" id="linValidatorFileInput" accept=".txt" class="hidden-input">
-                            <label for="linValidatorFileInput" class="upload-label">
-                                <div class="upload-icon-wrapper">
-                                    <i class="fas fa-cloud-upload-alt"></i>
-                                </div>
-                                <div class="upload-text">
-                                    <span class="main-text">Seleccionar archivo para Auditar</span>
-                                    <span class="sub-text">Formatos aceptados: .txt</span>
-                                </div>
-                            </label>
-                        </div>
-                        <div id="linFileName1" class="file-status-badge">
-                            <i class="fas fa-info-circle"></i> Ningún archivo seleccionado
-                        </div>
+                    <div class="header-actions" style="margin-left: auto; display: flex; gap: 10px;">
+                         <button id="linResetBtn" class="small-btn" style="background: transparent; border: 1px solid #4b5563; color: #9ca3af;"><i class="fas fa-undo"></i></button>
+                         <button id="btnExportLin" class="small-btn btn-success" disabled><i class="fas fa-file-export"></i></button>
                     </div>
                 </div>
-
-                <!-- SECCIÓN CÍCLICO -->
-                <div class="lin-card cyclic-card">
-                    <div class="lin-card-header">
-                        <div class="header-icon" style="color: #fbbf24;"><i class="fas fa-sync-alt"></i></div>
-                        <div class="header-text">
-                            <h3>Comparación Cíclica</h3>
-                            <p>Detección de diferencias entre Base y Nuevo</p>
-                        </div>
-                        <button id="btnRunLinCompare" class="compare-trigger-btn" title="Iniciar Comparación">
-                            <i class="fas fa-bolt"></i>
-                        </button>
+                <div class="lin-card-body" style="padding: 1.5rem;">
+                    <div class="premium-upload-zone" id="linUploadZone" style="padding: 1.5rem; border: 2px dashed rgba(16, 185, 129, 0.2);">
+                        <input type="file" id="linValidatorFileInput" accept=".txt" class="hidden-input">
+                        <label for="linValidatorFileInput" class="upload-label" style="cursor: pointer;">
+                            <div class="upload-icon-wrapper" style="width: 40px; height: 40px; font-size: 1.2rem;">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                            </div>
+                            <div class="upload-text">
+                                <span class="main-text" style="font-size: 0.9rem;">Cargar TXT para Auditar</span>
+                                <span class="sub-text" style="font-size: 0.7rem;">Validación automática de nombres y NKs</span>
+                            </div>
+                        </label>
                     </div>
-                    <div class="lin-card-body">
-                        <div class="cyclic-inputs">
-                            <div class="mini-upload-group">
-                                <label>Archivo Principal (Base)</label>
-                                <input type="file" id="linMasterFileInput" accept=".txt" class="hidden-input">
-                                <button onclick="document.getElementById('linMasterFileInput').click()" class="mini-upload-btn primary-border">
-                                    <i class="fas fa-file-alt"></i> 
-                                    <span id="linMasterFileName">Seleccionar Principal</span>
-                                </button>
-                            </div>
-                            <div class="cyclic-divider">
-                                <i class="fas fa-chevron-right"></i>
-                            </div>
-                            <div class="mini-upload-group">
-                                <label>Archivo Secundario (Nuevo)</label>
-                                <input type="file" id="linSecondaryFileInput" accept=".txt" class="hidden-input">
-                                <button onclick="document.getElementById('linSecondaryFileInput').click()" class="mini-upload-btn secondary-border">
-                                    <i class="fas fa-file-alt"></i>
-                                    <span id="linSecondaryFileName">Seleccionar Secundario</span>
-                                </button>
-                            </div>
-                        </div>
+                    <div id="linFileName1" class="file-status-badge" style="margin-top: 1rem; background: rgba(15, 23, 42, 0.5);">
+                        <i class="fas fa-info-circle"></i> Ningún archivo seleccionado
                     </div>
                 </div>
             </div>
@@ -285,39 +238,6 @@ export class LinearizationValidatorView {
         const fileInput = this.container.querySelector('#linValidatorFileInput');
         if (fileInput) {
             fileInput.addEventListener('change', (e) => this.handleFileLoad(e));
-        }
-
-        // CÍCLICO: PRINCIPAL
-        const masterInput = this.container.querySelector('#linMasterFileInput');
-        if (masterInput) {
-            masterInput.addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const result = await loadFile(file, true);
-                    this.masterRecords = result.records;
-                    this.container.querySelector('#linMasterFileName').textContent = file.name;
-                    window.showNotification('Archivo Cargado', 'Principal cargado para comparación.', 'info');
-                }
-            });
-        }
-
-        // CÍCLICO: SECUNDARIO
-        const secondaryInput = this.container.querySelector('#linSecondaryFileInput');
-        if (secondaryInput) {
-            secondaryInput.addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const result = await loadFile(file, true);
-                    this.records = result.records;
-                    this.container.querySelector('#linSecondaryFileName').textContent = file.name;
-                    window.showNotification('Archivo Cargado', 'Secundario cargado para comparación.', 'info');
-                }
-            });
-        }
-
-        const runCompareBtn = this.container.querySelector('#btnRunLinCompare');
-        if (runCompareBtn) {
-            runCompareBtn.onclick = () => this.runStrictComparison();
         }
 
         const resetBtn = this.container.querySelector('#linResetBtn');
@@ -464,7 +384,6 @@ export class LinearizationValidatorView {
         if (!file) return;
         
         try {
-            // CARGA PURA: Cargamos el archivo sin correcciones automáticas para revisión previa
             const result = await loadFile(file, true);
             if (!result) return;
 
@@ -478,7 +397,7 @@ export class LinearizationValidatorView {
             await this.performValidation();
             this.saveToCache();
             
-            window.showNotification('Auditoría Completada', 'Se ha verificado contra el Maestro de la base de datos.', 'success');
+            window.showNotification('Archivo Cargado', 'Registros analizados para auditoría.', 'success');
         } catch (error) {
             console.error('Error:', error);
             window.showNotification('Error', 'No se pudo cargar el archivo.', 'error');
@@ -585,7 +504,7 @@ export class LinearizationValidatorView {
             r.hasLowercase = false;
 
             // C. No está en base de datos (Catálogo de Nombres)
-            r.isInvalidName = !isValidColorName(r.baseName || cleanBase, r.name);
+            r.isInvalidName = !r.isManualValidated && !isValidColorName(r.baseName || cleanBase, r.name);
 
             // D. Paréntesis con número
             r.hasNumberedParentheses = /\(\d+\)/.test(r.name);
@@ -771,9 +690,12 @@ export class LinearizationValidatorView {
                 <td>
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding-right: 0.5rem;">
                         <div class="validation-status-text">${statusHtml}</div>
-                        <div class="row-actions">
-                            ${record.hasError && !record.isDuplicate ? `<button class="btn-icon-action fix" data-uid="${record._uid}" title="Corregir"><i class="fas fa-magic"></i></button>` : ''}
-                            ${record.isDuplicate ? `<button class="btn-icon-action delete" data-uid="${record._uid}" title="Eliminar"><i class="fas fa-trash"></i></button>` : ''}
+                        <div class="row-actions" style="display: flex; gap: 4px;">
+                            ${record.isInvalidName ? `
+                                <button class="btn-icon-action add-to-txt" data-uid="${record._uid}" title="Agregar al TXT" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981;"><i class="fas fa-plus"></i> AGREGAR</button>
+                            ` : ''}
+                            <button class="btn-icon-action edit" data-uid="${record._uid}" title="Editar Todo" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;"><i class="fas fa-pencil-alt"></i></button>
+                            <button class="btn-icon-action delete" data-uid="${record._uid}" title="Eliminar" style="background: rgba(239, 68, 68, 0.1); color: #ef4444;"><i class="fas fa-trash-alt"></i></button>
                         </div>
                     </div>
                 </td>
@@ -782,18 +704,20 @@ export class LinearizationValidatorView {
         });
 
         // 5. Vincular eventos de acciones
-        tableBody.querySelectorAll('.btn-icon-action.fix').forEach(btn => {
-            btn.onclick = async () => {
+        tableBody.querySelectorAll('.btn-icon-action.add-to-txt').forEach(btn => {
+            btn.onclick = () => {
                 const uid = btn.dataset.uid;
                 const idx = this.records.findIndex(r => r._uid === uid);
-                if (idx === -1) return;
-                const result = await validateAndCorrectRecords([this.records[idx]], 'Individual', null, '', this.records);
-                if (result && result.corrected) {
-                    this.records[idx] = result.records[0];
+                if (idx !== -1) {
+                    this.records[idx].isManualValidated = true;
                     this.performValidation();
-                    window.showNotification('Corregido', 'El registro ha sido actualizado.', 'success');
+                    window.showNotification('Agregado', 'Color marcado como válido para este TXT.', 'success');
                 }
             };
+        });
+
+        tableBody.querySelectorAll('.btn-icon-action.edit').forEach(btn => {
+            btn.onclick = () => this.showManualEditModal(btn.dataset.uid);
         });
 
         tableBody.querySelectorAll('.btn-icon-action.delete').forEach(btn => {
@@ -801,11 +725,11 @@ export class LinearizationValidatorView {
                 const uid = btn.dataset.uid;
                 const idx = this.records.findIndex(r => r._uid === uid);
                 if (idx === -1) return;
-                if (confirm('¿Seguro que desea eliminar este registro duplicado?')) {
+                
+                if (confirm(`¿Seguro que desea ELIMINAR el color "${this.records[idx].name}" de este archivo?`)) {
                     this.records.splice(idx, 1);
                     this.performValidation();
-                    this.saveToCache();
-                    window.showNotification('Eliminado', 'Registro eliminado correctamente.', 'info');
+                    window.showNotification('Eliminado', 'Registro eliminado del archivo.', 'info');
                 }
             };
         });
@@ -814,6 +738,97 @@ export class LinearizationValidatorView {
 
         const exportBtn = this.container.querySelector('#btnExportLin');
         if (exportBtn) exportBtn.disabled = errorCount > 0;
+    }
+
+    async showManualEditModal(uid) {
+        const idx = this.records.findIndex(r => r._uid === uid);
+        if (idx === -1) return;
+        const rec = this.records[idx];
+
+        const isNameInCatalog = isValidColorName(rec.baseName || rec.name);
+
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay active';
+        modal.style.zIndex = '10005';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 500px; background: #0f172a; border: 2px solid #334155; border-radius: 12px;">
+                <div class="modal-header" style="background: #1e293b; border-bottom: 2px solid #3b82f6; padding: 1.2rem; border-radius: 12px 12px 0 0;">
+                    <h3 style="color: white; margin: 0; font-size: 1.1rem;"><i class="fas fa-edit" style="color: #3b82f6; margin-right: 10px;"></i> Editar Registro</h3>
+                </div>
+                <div class="modal-body" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div>
+                            <label style="display:block; color:#94a3b8; font-size:0.7rem; margin-bottom:5px; font-weight:800;">NOMBRE DEL COLOR</label>
+                            <input type="text" id="edit_name" value="${escapeHtml(rec.name)}" style="width:100%; background:#0b0f1a; border:1px solid #334155; color:white; padding:10px; border-radius:6px; font-weight:bold;">
+                        </div>
+                        <div>
+                            <label style="display:block; color:#94a3b8; font-size:0.7rem; margin-bottom:5px; font-weight:800;">CÓDIGO NK</label>
+                            <input type="text" id="edit_nk" value="${escapeHtml(rec.nk || '')}" style="width:100%; background:#0b0f1a; border:1px solid #334155; color:#3b82f6; padding:10px; border-radius:6px; font-family:monospace; font-weight:900;">
+                        </div>
+                    </div>
+
+                    <!-- SECCIÓN DE VALIDACIÓN RÁPIDA -->
+                    <div style="background: rgba(30, 41, 59, 0.4); padding: 12px; border-radius: 8px; border: 1px solid #1e293b; display: flex; align-items: center; justify-content: space-between;">
+                        <span style="font-size: 0.7rem; font-weight: 800; color: ${isNameInCatalog ? '#10b981' : '#f59e0b'};">
+                            <i class="fas fa-${isNameInCatalog ? 'check-circle' : 'exclamation-triangle'}"></i> 
+                            ${isNameInCatalog ? 'NOMBRE EN CATÁLOGO' : 'NOMBRE NO REGISTRADO'}
+                        </span>
+                        <label style="color: #3b82f6; font-size: 0.75rem; cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="force_validate" ${rec.isManualValidated ? 'checked' : ''} style="width: 16px; height: 16px;"> 
+                            Omitir error de catálogo
+                        </label>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem;">
+                        <div><label style="font-size:0.6rem; color:#64748b;">C</label><input type="number" id="edit_c" value="${rec.cmyk[0]}" step="0.0001" style="width:100%; background:#0b0f1a; border:1px solid #334155; color:white; padding:8px; border-radius:4px;"></div>
+                        <div><label style="font-size:0.6rem; color:#64748b;">M</label><input type="number" id="edit_m" value="${rec.cmyk[1]}" step="0.0001" style="width:100%; background:#0b0f1a; border:1px solid #334155; color:white; padding:8px; border-radius:4px;"></div>
+                        <div><label style="font-size:0.6rem; color:#64748b;">Y</label><input type="number" id="edit_y" value="${rec.cmyk[2]}" step="0.0001" style="width:100%; background:#0b0f1a; border:1px solid #334155; color:white; padding:8px; border-radius:4px;"></div>
+                        <div><label style="font-size:0.6rem; color:#64748b;">K</label><input type="number" id="edit_k" value="${rec.cmyk[3]}" step="0.0001" style="width:100%; background:#0b0f1a; border:1px solid #334155; color:white; padding:8px; border-radius:4px;"></div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;">
+                        <div><label style="font-size:0.6rem; color:#64748b;">L*</label><input type="number" id="edit_l" value="${rec.lab[0]}" step="0.01" style="width:100%; background:#0b0f1a; border:1px solid #334155; color:white; padding:8px; border-radius:4px;"></div>
+                        <div><label style="font-size:0.6rem; color:#64748b;">a*</label><input type="number" id="edit_a" value="${rec.lab[1]}" step="0.01" style="width:100%; background:#0b0f1a; border:1px solid #334155; color:white; padding:8px; border-radius:4px;"></div>
+                        <div><label style="font-size:0.6rem; color:#64748b;">b*</label><input type="number" id="edit_b" value="${rec.lab[2]}" step="0.01" style="width:100%; background:#0b0f1a; border:1px solid #334155; color:white; padding:8px; border-radius:4px;"></div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="padding: 1.2rem; background: #1e293b; display: flex; justify-content: flex-end; gap: 10px; border-radius: 0 0 12px 12px;">
+                    <button id="cancel_edit" style="background:transparent; border:1px solid #475569; color:#94a3b8; padding:8px 20px; border-radius:6px; cursor:pointer;">CANCELAR</button>
+                    <button id="save_edit" style="background:#3b82f6; border:none; color:white; padding:8px 25px; border-radius:6px; font-weight:bold; cursor:pointer;">GUARDAR CAMBIOS</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        modal.querySelector('#cancel_edit').onclick = () => modal.remove();
+        modal.querySelector('#save_edit').onclick = async () => {
+            const newName = modal.querySelector('#edit_name').value.trim();
+            const newNk = modal.querySelector('#edit_nk').value.trim().toUpperCase();
+            const forceValidate = modal.querySelector('#force_validate').checked;
+
+            this.records[idx] = {
+                ...rec,
+                name: newName,
+                nk: newNk,
+                baseName: extractBaseName(newName),
+                isManualValidated: forceValidate,
+                cmyk: [
+                    parseFloat(modal.querySelector('#edit_c').value) || 0,
+                    parseFloat(modal.querySelector('#edit_m').value) || 0,
+                    parseFloat(modal.querySelector('#edit_y').value) || 0,
+                    parseFloat(modal.querySelector('#edit_k').value) || 0
+                ],
+                lab: [
+                    parseFloat(modal.querySelector('#edit_l').value) || 0,
+                    parseFloat(modal.querySelector('#edit_a').value) || 0,
+                    parseFloat(modal.querySelector('#edit_b').value) || 0
+                ]
+            };
+            
+            modal.remove();
+            await this.performValidation();
+            window.showNotification('Actualizado', 'Registro actualizado correctamente.', 'success');
+        };
     }
 
     reset() {

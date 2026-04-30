@@ -6,30 +6,26 @@ export function normalizeSpaces(str) {
 
 export function extractNK(fullName) {
     if (!fullName) return null;
-    const normalized = normalizeSpaces(fullName);
+    const normalized = normalizeSpaces(fullName).toUpperCase();
     
-    // 1. Prioridad: Buscar si existe algún NK de la base de datos (con sus errores pegados)
-    const masterNks = (window.ALL_MASTER_NKS || []);
-    const sortedMaster = [...masterNks].sort((a, b) => b.length - a.length);
-
-    for (const master of sortedMaster) {
-        const escaped = master.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        // Buscamos el NK rodeado de lo que sea, capturando paréntesis
-        const pattern = new RegExp(`(${escaped}(?:\\s*\\([^)]*\\))*)`, 'i');
-        const m = normalized.match(pattern);
-        if (m) return m[1].trim();
+    // 1. Prioridad ABSOLUTA: Buscar NKs conocidos de la base de datos
+    // Ordenamos por longitud descendente para no confundir NK675 con NK675426
+    const masterNks = (window.ALL_MASTER_NKS || []).map(n => n.toUpperCase()).sort((a, b) => b.length - a.length);
+    for (const master of masterNks) {
+        if (normalized.includes(master)) {
+            return master;
+        }
     }
 
-    // 2. Fallback Agresivo: Si no hay match en DB, buscar cualquier palabra que tenga números
-    // Empezamos desde el final que es lo más común
+    // 2. Fallback: Buscar patrón NK...
+    const nkMatch = normalized.match(/NK[A-Z0-9\-]+/i);
+    if (nkMatch) return nkMatch[0].toUpperCase();
+    
+    // 3. Fallback Agresivo: Última palabra con números
     const words = normalized.split(/\s+/);
     for (let i = words.length - 1; i >= 0; i--) {
         const word = words[i];
-        const wordUpper = word.toUpperCase();
-        // Si empieza por NK o tiene números y al menos 3 caracteres, es nuestro NK
-        if (wordUpper.startsWith('NK') || (/[0-9]/.test(word) && word.length >= 2)) {
-            return word;
-        }
+        if (/[0-9]/.test(word) && word.length >= 4) return word.toUpperCase();
     }
     
     return null;
@@ -37,29 +33,22 @@ export function extractNK(fullName) {
 
 export function extractBaseName(fullName) {
     if (!fullName) return '';
-    const normalized = normalizeSpaces(fullName);
+    const normalized = normalizeSpaces(fullName).toUpperCase();
     
-    // 1. Intentar encontrar el nombre oficial más largo primero
-    const validNames = window.ALL_VALID_COLOR_NAMES || [];
-    const sortedNames = [...validNames].sort((a, b) => b.length - a.length);
-    
-    for (const officialName of sortedNames) {
-        if (normalized.toUpperCase().startsWith(officialName.toUpperCase())) {
-            const remaining = normalized.substring(officialName.length).trim();
-            if (!remaining) return officialName;
-            const onlyParens = /^(\s*\([^)]*\))+$/.test(remaining);
-            if (onlyParens) return officialName;
-        }
+    // 1. Quitar el NK si existe
+    const nk = extractNK(fullName);
+    let base = normalized;
+    if (nk) {
+        // Quitar el NK de la cadena (solo la primera ocurrencia)
+        base = normalized.replace(nk, '').trim();
     }
 
-    // 2. Fallback: Simplemente quitar el NK encontrado de la cadena original
-    const nk = extractNK(normalized);
-    if (!nk) return normalized;
+    // 2. Quitar prefijos comunes (2DH, TM, etc.) que suelen estar al inicio o pegados
+    base = base.replace(/^(2DH|TM|TM\s+)/i, '').trim();
     
-    const escapedNk = nk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`(?:^|\\s)${escapedNk}(?:\\s|$)`, 'gi');
+    // 3. Quitar paréntesis (1), (2), etc.
+    base = base.replace(/\s*\([^)]*\)/g, '').trim();
     
-    let base = normalized.replace(pattern, ' ').trim();
     return normalizeSpaces(base);
 }
 
@@ -83,18 +72,12 @@ export function showNotification(title, message, type = 'info') {
 export function validateAndFixCmykValue(value) {
     const str = String(value).trim();
     if (str === '') return 0;
-    let fixed = str.replace(/\.+/g, '.');
-    const parts = fixed.split('.');
-    let integerPart = parts[0];
-    let decimalPart = parts[1] || '';
-    let intNum = parseInt(integerPart, 10);
+    
+    // El usuario requiere ENTEROS 0-100
+    let intNum = parseInt(str, 10);
     if (isNaN(intNum)) intNum = 0;
     if (intNum > 100) intNum = 100;
     if (intNum < 0) intNum = 0;
-    if (decimalPart.length > 6) {
-        decimalPart = decimalPart.substring(0, 6);
-    } else if (decimalPart.length < 6) {
-        decimalPart = decimalPart.padEnd(6, '0');
-    }
-    return parseFloat(`${intNum}.${decimalPart}`);
+    
+    return intNum; // Retornar entero puro
 }

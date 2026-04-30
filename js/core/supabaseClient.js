@@ -366,21 +366,27 @@ export async function addMasterNk(nkCode, user = 'sistema') {
 export async function getEquivalencyGroupsFromDB() {
     try {
         console.log('📡 Consultando tabla maestra: equivalencias...');
-        // Intentamos cargar de 'equivalencias' que es la fuente sugerida
-        const { data, error } = await supabase
+        // Simplificamos la consulta para evitar problemas de formato
+        const { data, error, status } = await supabase
             .from('equivalencias')
-            .select('*');
-
+            .select();
+        
         if (error) {
-            console.warn('⚠️ No se pudo leer de "equivalencias", intentando con "equivalency_groups"...');
-            const fallback = await supabase.from('equivalency_groups').select('*');
-            if (fallback.error) throw fallback.error;
-            return processGroupData(fallback.data);
+            console.error(`❌ Error en Supabase (Status ${status}):`, error);
+            console.error('Mensaje:', error.message);
+            console.error('Detalle:', error.details);
+            console.error('Pista:', error.hint);
+            return [];
+        }
+        
+        if (!data) {
+            console.warn('⚠️ La consulta devolvió "null" para la tabla equivalencias.');
+            return [];
         }
 
         return processGroupData(data);
     } catch (error) {
-        console.error('❌ Error crítico cargando equivalencias:', error.message);
+        console.error('❌ Error de red o ejecución:', error);
         return [];
     }
 }

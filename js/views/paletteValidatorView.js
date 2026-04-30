@@ -1021,14 +1021,14 @@ export class PaletteValidatorView {
     }
     
     attachActionEvents() {
-        const lockBtns = this.tableBody.querySelectorAll('.btn-lock');
+        const lockBtns = this.tableBody.querySelectorAll('.btn-lock-ok');
         lockBtns.forEach(btn => {
             btn.onclick = (e) => {
                 e.stopPropagation();
                 this.lockColor(parseInt(btn.dataset.id));
             };
         });
-        const modifyBtns = this.tableBody.querySelectorAll('.btn-modify');
+        const modifyBtns = this.tableBody.querySelectorAll('.btn-unlock-warn');
         modifyBtns.forEach(btn => {
             btn.onclick = (e) => {
                 e.stopPropagation();

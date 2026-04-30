@@ -9,6 +9,7 @@ import { clearAllCache, saveComparatorState, loadComparatorState } from './modul
 import { showNotification, escapeHtml } from './core/utils.js';
 import { findDuplicateGroups, showDuplicateModal } from './modules/duplicateHandler.js';
 import { showFusionWizard } from './modules/fusionWizard.js';
+import { initAuditHandler } from './modules/auditHandler.js';
 
 // Hacer globales para acceso desde otros módulos y eventos inline
 window.showNotification = showNotification;
@@ -39,6 +40,7 @@ class AlphaColorMatch {
         this.groupSelections = new Map();
         this.manualGroupSelections = new Set();
         this.inboxItems = [];
+        this.pendingAudit = new Map(); // [id] -> record con errores
         
         // Vistas
         this.paletteValidatorView = null;
@@ -52,8 +54,10 @@ class AlphaColorMatch {
 
         // Inicializar el validador con la instancia de la app
         setAppInstance(this);
+        initAuditHandler(this);
         
         this.init();
+        window.app = this;
     }
     
     async init() {
@@ -67,6 +71,15 @@ class AlphaColorMatch {
         await this.loadMasterData();
         this.initViews();
         this.initMenuNavigation();
+        // Re-comparar al cambiar de modo
+        document.querySelectorAll('input[name="compareMode"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                if (this.primaryData.length > 0 || this.secondaryData.length > 0) {
+                    this.compareFiles();
+                }
+            });
+        });
+
         this.bindEvents();
         await this.loadInbox();
         
@@ -201,12 +214,28 @@ class AlphaColorMatch {
         const keepAllMasterBtn = document.getElementById('keepAllMasterBtn');
         const addAllSecBtn = document.getElementById('addAllSecondaryBtn');
 
-        if (compareBtn) {
-            compareBtn.onclick = () => this.compareFiles();
-        }
         
         if (addAllSecBtn) {
             addAllSecBtn.onclick = () => this.addAllSecondaryItems();
+        }
+
+        // Eventos de Colapso Unificado (Triángulo)
+        const toggleBtn = document.getElementById('toggleDataGridBtn');
+        const container = document.getElementById('dataGridContainer');
+        console.log('🔍 Buscando elementos de toggle:', { toggleBtn: !!toggleBtn, container: !!container });
+        
+        if (toggleBtn && container) {
+            toggleBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                console.log('📐 Toggling data grid state...');
+                container.classList.toggle('collapsed');
+                toggleBtn.classList.toggle('collapsed');
+                
+                // Forzar reflow para asegurar que la animación se dispare
+                void container.offsetHeight;
+            });
+        } else {
+            console.error('❌ No se encontró toggleBtn o dataGridContainer');
         }
     }
 
@@ -219,13 +248,11 @@ class AlphaColorMatch {
         if (mode === 'fusion') {
             if (primaryTitle) primaryTitle.innerHTML = '🛡️ Archivo MASTER (Principal)';
             if (secondaryTitle) secondaryTitle.innerHTML = '✏️ Archivo de CAMBIOS (Secundario)';
-            if (compareBtn) compareBtn.innerHTML = '🚀 INICIAR FUSIÓN';
             if (keepAllBtn) keepAllBtn.style.display = 'inline-block';
             window.showNotification('Modo Fusión Activado', 'El secundario será auditado antes de la unión.', 'info');
         } else {
             if (primaryTitle) primaryTitle.innerHTML = '📁 Archivo Principal';
             if (secondaryTitle) secondaryTitle.innerHTML = '🔄 Archivo Secundario';
-            if (compareBtn) compareBtn.innerHTML = '🔍 COMPARAR';
             if (keepAllBtn) keepAllBtn.style.display = 'none';
         }
         
@@ -292,19 +319,9 @@ class AlphaColorMatch {
         const file = event.target.files[0];
         if (!file) return;
         
-        const mode = document.querySelector('input[name="compareMode"]:checked')?.value || 'simple';
-
         try {
-            let result;
-            if (mode === 'fusion') {
-                // Modo Fusión: Carga rápida para el Master
-                console.log('🛡️ Carga rápida del Master (Modo Fusión)');
-                const { records, fileName } = await loadFile(file, true);
-                result = { records, fileName, correctionsApplied: 0, duplicatesResolved: 0 };
-            } else {
-                // Modo Simple: Validación completa
-                result = await this.processFileWithValidation(file, 'primary');
-            }
+            // ELIMINADA CARGA RÁPIDA: Todo archivo debe ser validado estrictamente
+            const result = await this.processFileWithValidation(file, 'primary');
 
             if (result) {
                 this.primaryData = result.records;
@@ -314,6 +331,9 @@ class AlphaColorMatch {
                 this.saveCurrentState();
                 
                 window.showNotification('Archivo Cargado', `Master: ${this.primaryData.length} registros.`, 'success');
+                
+                // Comparación automática
+                if (this.secondaryData.length > 0) this.compareFiles();
             }
         } catch (error) {
             console.error('❌ Error:', error);
@@ -336,6 +356,9 @@ class AlphaColorMatch {
                 
                 this.saveCurrentState();
                 window.showNotification('Archivo de Cambios Cargado', `Listo: ${this.secondaryData.length} registros validados.`, 'success');
+                
+                // Comparación automática
+                if (this.primaryData.length > 0) this.compareFiles();
             }
         } catch (error) {
             console.error('❌ Error:', error);
@@ -379,20 +402,24 @@ class AlphaColorMatch {
             }
         }
 
-        // 4. Resolver Nombres Mal Escritos
-        let correctionsApplied = 0;
-        const onCorrection = (oldName, newName, reason) => {
-            correctionsApplied++;
-            this.saveCorrectionHistory(oldName, newName, reason);
-        };
-
-        const validationResult = await validateAndCorrectRecords(currentRecords, fileType, onCorrection, suggestedNk);
+        // 4. Auditoría Interactiva (Ventana Emergente)
+        const validationResult = await validateAndCorrectRecords(currentRecords, fileType, { silent: false });
         
-        if (validationResult.records.length === 0 && currentRecords.length > 0) {
-            return null; // Cancelado
+        if (validationResult.cancelled) {
+            this.clearFile(fileType);
+            return;
+        }
+        
+        // Limpiar auditorías anteriores para este archivo
+        for (const [id, rec] of this.pendingAudit.entries()) {
+            if (rec._fileType === fileType) this.pendingAudit.delete(id);
         }
         
         currentRecords = validationResult.records;
+        if (currentRecords.length === 0) {
+            this.clearFile(fileType);
+            return;
+        }
 
         // 5. RE-VALIDACIÓN DE DUPLICADOS (Crucial después de correcciones)
         const finalDuplicateGroups = findDuplicateGroups(currentRecords);
@@ -408,7 +435,7 @@ class AlphaColorMatch {
         return {
             records: currentRecords,
             fileName,
-            correctionsApplied,
+            correctionsApplied: validationResult.correctionsApplied || 0,
             duplicatesResolved,
             totalOriginal: rawRecords.length
         };
@@ -425,7 +452,8 @@ class AlphaColorMatch {
         }
         
         console.log('🔍 Comparando archivos...');
-        const mode = 'simple'; // Forzado a modo simple por auditoría de flujo
+        const modeSelect = document.querySelector('input[name="compareMode"]:checked');
+        const mode = modeSelect ? modeSelect.value : 'fusion';
         
         this.selectedPending.clear();
         this.deletedPending.clear();
@@ -445,7 +473,7 @@ class AlphaColorMatch {
         // ---------------------------------------------
 
         this.logComparisonSession();
-        renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
+        renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending); // Quitamos pendingAudit del renderizado final
         this.validateExportReady();
         this.saveCurrentState();
         
@@ -455,7 +483,7 @@ class AlphaColorMatch {
     selectGroup(groupId, source) {
         this.groupSelections.set(groupId, source);
         this.manualGroupSelections.add(groupId);
-        renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
+        renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending, this.pendingAudit);
         this.validateExportReady();
         this.saveCurrentState();
     }
@@ -516,14 +544,24 @@ class AlphaColorMatch {
             !this.deletedPending.has(item.id)
         );
         
-        const isReady = pendingUndecided.length === 0;
+        const hasPendingAudit = this.pendingAudit.size > 0;
+        const isReady = pendingUndecided.length === 0 && !hasPendingAudit;
         exportBtn.disabled = !isReady;
         
         const validationMsg = document.getElementById('validationMessage');
         if (validationMsg) {
-            if (pendingUndecided.length > 0) {
+            if (hasPendingAudit) {
+                validationMsg.innerHTML = `❌ SE REQUIERE ATENCIÓN: Hay ${this.pendingAudit.size} registros con errores (Paréntesis, CMYK > 100 o NKs inválidos) que deben ser corregidos en la tabla inferior.`;
+                validationMsg.style.display = 'block';
+                validationMsg.style.background = 'rgba(239, 68, 68, 0.2)';
+                validationMsg.style.borderColor = '#ef4444';
+                validationMsg.style.color = '#f87171';
+            } else if (pendingUndecided.length > 0) {
                 validationMsg.innerHTML = `⚠️ Faltan ${pendingUndecided.length} colores pendientes por decidir (Agregar o Eliminar)`;
                 validationMsg.style.display = 'block';
+                validationMsg.style.background = 'rgba(180, 83, 9, 0.2)';
+                validationMsg.style.borderColor = '#b45309';
+                validationMsg.style.color = '#fbbf24';
             } else {
                 validationMsg.style.display = 'none';
             }
@@ -635,7 +673,6 @@ class AlphaColorMatch {
             assignment: document.getElementById('assignmentView'),
             reports: document.getElementById('reportsView'),
             dashboard: document.getElementById('dashboardView'),
-            linearizationValidator: document.getElementById('linearizationValidatorView'),
             admin: document.getElementById('adminView')
         };
         
@@ -673,9 +710,6 @@ class AlphaColorMatch {
             }
             if (viewName === 'dashboard' && this.dashboardView) {
                 this.dashboardView.render();
-            }
-            if (viewName === 'linearizationValidator' && this.linearizationValidatorView) {
-                this.linearizationValidatorView.render();
             }
             if (viewName === 'admin' && this.adminView) {
                 this.adminView.render();

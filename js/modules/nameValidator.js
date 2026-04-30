@@ -19,7 +19,7 @@ export function getValidNamesSet() {
     return new Set(names.map(name => normalizeSpaces(name).toUpperCase()));
 }
 
-function addNameToLocalCatalog(name) {
+export function addNameToLocalCatalog(name) {
     const normalized = normalizeSpaces(name || '').toUpperCase();
     if (!window.ALL_VALID_COLOR_NAMES) window.ALL_VALID_COLOR_NAMES = [];
     if (!window.ALL_VALID_COLOR_NAMES.includes(normalized)) {
@@ -49,17 +49,35 @@ export async function ensureValidColorCatalogLoaded() {
 
 export function isValidColorName(baseName, fullName = '', ignoreCatalog = false) {
     if (!baseName) return false;
-    if (!validColorNamesLoaded) return true; 
+    if (ignoreCatalog) return true;
+    
+    // Si no se han cargado nombres válidos, no podemos validar positivamente
+    if (!validColorNamesLoaded) {
+        console.warn('⚠️ Catálogo de colores no cargado para validación.');
+        return false; 
+    }
+    
     const validSet = getValidNamesSet();
     const normalized = normalizeSpaces(baseName).toUpperCase();
-    if (validSet.size === 0 || ignoreCatalog) return true;
+    
+    // Si el set está vacío, es un error crítico de carga de datos
+    if (validSet.size === 0) {
+        console.error('❌ Catálogo de colores vacío. Bloqueando por seguridad.');
+        return false;
+    }
+    
     return validSet.has(normalized);
+}
+
+export async function ensureValidNksLoaded() {
+    const masterNks = await getAllMasterNks();
+    masterNksSet = new Set(masterNks.map(nk => nk.toUpperCase()));
+    return masterNksSet;
 }
 
 export function isValidNK(nk) {
     if (!nk) return false;
     const cleanNk = nk.trim().toUpperCase();
-    if (masterNksSet.size === 0) return true;
     return masterNksSet.has(cleanNk);
 }
 
@@ -78,196 +96,294 @@ export async function addMasterNK(nkCode) {
 }
 
 export async function validateAndCorrectRecords(records, type = 'secondary', options = {}) {
+    console.log(`%c🛡️ Auditoría Secuencial Iniciada (${type})...`, 'color: #ef4444; font-weight: bold;');
+    
     await ensureValidColorCatalogLoaded();
-    const invalidRecords = [];
+    const masterNks = await getAllMasterNks();
+    masterNksSet = new Set(masterNks.map(nk => nk.toUpperCase()));
+    
+    const dbRows = await getEquivalencyGroupsFromDB();
+    window.ALL_VALID_COLOR_NAMES = [];
+    dbRows.forEach(row => {
+        if (Array.isArray(row)) {
+            for (let i = 1; i < row.length; i++) {
+                const name = row[i]?.toString().trim().toUpperCase();
+                if (name && !window.ALL_VALID_COLOR_NAMES.includes(name)) {
+                    window.ALL_VALID_COLOR_NAMES.push(name);
+                }
+            }
+        }
+    });
+    validColorNamesLoaded = window.ALL_VALID_COLOR_NAMES.length > 0;
+
+    const allAuditRecords = [];
+    const seenRecords = new Map();
+
     for (const record of records) {
-        const cleanBase = (record.baseName || record.name || '').replace(/\s*\([^)]*\)/g, '').toUpperCase().trim();
-        const cleanNk = (record.nk || '').trim().toUpperCase();
-        if (cleanBase.includes('WHITE') || cleanBase.includes('10A')) continue;
+        let originalRawName = (record.name || '').trim().toUpperCase();
+        let cleanNk = (record.nk || '').trim().toUpperCase();
+        
+        // Extracción de NK si no existe
+        if (!cleanNk) {
+            const nkMatch = originalRawName.match(/NK[A-Z0-9\-]+/i);
+            if (nkMatch) cleanNk = nkMatch[0].toUpperCase();
+        }
+
+        let rawName = originalRawName;
+        if (cleanNk) rawName = rawName.replace(cleanNk, '').trim();
+        const cleanBase = rawName.replace(/\s*\([^)]*\)/g, '').trim();
+        
         const isNameValid = isValidColorName(cleanBase);
         const isNkValid = isValidNK(cleanNk);
-        if (!isNameValid || !isNkValid) {
-            invalidRecords.push({ ...record, nameError: !isNameValid, nkError: !isNkValid, baseName: cleanBase, nk: cleanNk });
+        const hasParentheses = /\(|\)/.test(originalRawName);
+        
+        const signature = `${cleanBase}|${cleanNk}`;
+        const isDuplicate = seenRecords.has(signature);
+        seenRecords.set(signature, true);
+
+        const hasAnyError = !isNameValid || !isNkValid || hasParentheses || isDuplicate;
+        
+        if (hasAnyError) {
+            allAuditRecords.push({ 
+                ...record, 
+                baseName: cleanBase, 
+                nk: cleanNk,
+                isDuplicate,
+                nameError: !isNameValid,
+                nkError: !isNkValid,
+                hasParentheses
+            });
         }
     }
-    if (invalidRecords.length === 0) return { records: records };
-    return new Promise((resolve) => {
-        createCorrectionModal(invalidRecords, type, (correctedRecords) => {
-            const finalRecords = records.map(original => {
-                const corrected = correctedRecords.find(c => c.id === original.id);
-                return corrected ? corrected : original;
-            });
-            resolve({ records: finalRecords });
+    
+    if (allAuditRecords.length === 0) {
+        console.log('✅ Archivo impecable. Cargando...');
+        return { records: records, correctionsApplied: 0 };
+    }
+
+    // PASO 1: CORREGIR NOMBRES
+    const nameAudit = allAuditRecords.filter(r => r.nameError || r.hasParentheses);
+    let currentRecords = allAuditRecords;
+
+    if (nameAudit.length > 0) {
+        const correctedNames = await new Promise(resolve => createCorrectionModal(nameAudit, 'names', resolve));
+        if (!correctedNames) return { records: [], cancelled: true };
+        currentRecords = allAuditRecords.map(orig => {
+            const corr = correctedNames.find(c => c.id === orig.id);
+            return corr ? { ...orig, ...corr, nameError: false, hasParentheses: false } : orig;
         });
+    }
+
+    // PASO 2: CORREGIR NKs
+    const nkAudit = currentRecords.filter(r => r.nkError);
+    if (nkAudit.length > 0) {
+        const correctedNks = await new Promise(resolve => createCorrectionModal(nkAudit, 'nks', resolve));
+        if (!correctedNks) return { records: [], cancelled: true };
+        currentRecords = currentRecords.map(orig => {
+            const corr = correctedNks.find(c => c.id === orig.id);
+            return corr ? { ...orig, ...corr, nkError: false } : orig;
+        });
+    }
+
+    const finalRecords = records.map(original => {
+        const corrected = currentRecords.find(c => c.id === original.id);
+        if (corrected) {
+            return {
+                ...original,
+                name: `${corrected.baseName} ${corrected.nk}`.trim(),
+                baseName: corrected.baseName,
+                nk: corrected.nk
+            };
+        }
+        return original;
     });
+
+    return { records: finalRecords, correctionsApplied: currentRecords.length };
 }
 
-function createCorrectionModal(invalidRecords, type, onComplete) {
+function createCorrectionModal(auditRecords, stepType, onComplete) {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay active';
     modal.style.zIndex = '10001';
-    const uniqueInvalidNks = [...new Set(invalidRecords.filter(r => r.nkError).map(r => r.nk))];
-    const title = type === 'primary' ? 'Corrección Maestro' : 'Corrección Secundario';
+    
+    const isNameStep = stepType === 'names';
+    const title = isNameStep ? 'PASO 1: VALIDAR NOMBRES DE COLOR' : 'PASO 2: VALIDAR CÓDIGOS NK';
+    const subtitle = isNameStep ? 'Escribe el nombre y elige la sugerencia del catálogo.' : 'Escribe y selecciona el código NK oficial.';
     
     modal.innerHTML = `
-        <div class="modal-content" style="max-width: 900px; width: 95%;">
-            <div class="modal-header" style="background: #991b1b;"><h3 style="color: white;"><i class="fas fa-spell-check"></i> ${title}</h3></div>
-            <div class="modal-body" style="display: flex; gap: 1rem;">
-                <div style="flex: 2; max-height: 400px; overflow-y: auto;">
-                    <table class="results-table">
-                        <thead><tr><th>Línea</th><th>Nombre</th><th>Familia</th><th>OK</th></tr></thead>
-                        <tbody id="correctionTableBody">
-                            ${invalidRecords.map(rec => `
-                                <tr data-id="${rec.id}">
-                                    <td>${rec.id}</td>
-                                    <td style="font-size:0.7rem;">${rec.name || rec.baseName}</td>
-                                    <td style="position:relative;">
-                                        <input type="text" class="name-input ${rec.nameError ? 'error-border' : ''}" value="${rec.baseName || rec.name}" style="width:100%;">
-                                        <div class="suggestion-box" style="display:none; position:absolute; left:0; right:0; background:#1a1a2a; border:1px solid #00e5ff; z-index:100; max-height:100px; overflow-y:auto;"></div>
-                                        <div class="family-selector" style="display:${rec.nameError ? 'block' : 'none'}; margin-top:5px;">
-                                            <input type="text" class="family-filter-input" placeholder="Buscar familia..." style="width:100%; font-size:0.7rem;">
-                                            <div class="family-suggestion-box" style="display:none; position:absolute; left:0; right:0; background:#111117; border:1px solid #eab308; z-index:101; max-height:100px; overflow-y:auto;"></div>
-                                            <input type="hidden" class="selected-family-id" value="">
-                                        </div>
-                                    </td>
-                                    <td><i class="fas fa-${rec.nameError ? 'exclamation-circle' : 'check-circle'}" style="color: ${rec.nameError ? '#ef4444' : '#10b981'};"></i></td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-                <div style="flex: 1; background: #111117; padding: 10px; border-radius: 5px;">
-                    <h5 style="color: #9ca3af;">NKs Nuevos</h5>
-                    ${uniqueInvalidNks.map(nk => `<div style="margin-bottom:5px;"><input type="checkbox" class="nk-checkbox" checked data-nk="${nk}"> <span style="color:#eab308; font-family:monospace;">${nk}</span></div>`).join('')}
+        <div class="modal-content" style="max-width: 900px; width: 95%; background: #0f172a; border: 2px solid #334155; border-radius: 12px;">
+            <div class="modal-header" style="background: #1e1e2e; border-bottom: 3px solid ${isNameStep ? '#f59e0b' : '#3b82f6'}; padding: 1.5rem 2rem; border-radius: 12px 12px 0 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <div>
+                        <h3 style="color: white; margin: 0; font-size: 1.5rem;"><i class="fas fa-${isNameStep ? 'palette' : 'barcode'}" style="color: ${isNameStep ? '#f59e0b' : '#3b82f6'};"></i> ${title}</h3>
+                        <p style="color: #94a3b8; margin: 8px 0 0 0; font-size: 0.9rem;">${subtitle}</p>
+                    </div>
                 </div>
             </div>
-            <div class="modal-buttons" style="padding: 1rem; border-top: 1px solid #2d3748;">
-                <button class="btn btn-secondary cancel-modal">CANCELAR</button>
-                <button class="btn btn-primary" id="btnApplyCorrections" style="background: #10b981;">APLICAR Y REGISTRAR EN DB</button>
+            <div class="modal-body" style="padding: 2rem; overflow-y: auto; max-height: 60vh; background: #0b0f1a;">
+                <table class="results-table" style="width: 100%; border-spacing: 0 10px; border-collapse: separate;">
+                    <thead>
+                        <tr style="color: #475569; font-size: 0.75rem; text-transform: uppercase; font-weight: 900;">
+                            <th style="padding: 0 15px; width: 60px;">ID</th>
+                            <th style="padding: 0 15px;">Dato Original</th>
+                            <th style="padding: 0 15px;">${isNameStep ? 'Nombre del Color' : 'Código NK'}</th>
+                            <th style="padding: 0 15px; text-align: center; width: 150px;">Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="correctionTableBody">
+                        ${auditRecords.map(rec => `
+                            <tr data-id="${rec.id}" class="audit-row" style="background: #1e293b; border-radius: 10px;">
+                                <td style="text-align: center; font-weight: 900; color: #475569;">${rec.id}</td>
+                                <td style="padding: 15px; color: #94a3b8; font-size: 0.8rem; font-family: monospace;">${rec.name}</td>
+                                <td style="padding: 15px; position: relative;">
+                                    ${isNameStep ? `
+                                        <input type="text" class="name-input" placeholder="🔍 Escribe nombre..." value="${rec.baseName}" 
+                                               style="width: 100%; background: #0b0f1a; color: white; border: 2px solid #ef4444; padding: 12px; border-radius: 8px; font-size: 1rem; font-weight: bold;">
+                                        <div class="suggestion-box" style="display:none; position:absolute; left:0; right:0; background:#1e293b; border:2px solid #f59e0b; z-index:1000; max-height:200px; overflow-y:auto; border-radius: 0 0 8px 8px;"></div>
+                                        <input type="hidden" class="selected-family-id" value="">
+                                        <input type="hidden" class="nk-row-input" value="${rec.nk}">
+                                    ` : `
+                                        <input type="text" class="nk-row-input" placeholder="🔍 Escribe NK..." value="${rec.nk}" 
+                                               style="width: 100%; background: #0b0f1a; color: #3b82f6; border: 2px solid #3b82f6; padding: 12px; border-radius: 8px; font-family: monospace; font-weight: 900; text-align: center; font-size: 1.2rem;">
+                                        <div class="suggestion-box" style="display:none; position:absolute; left:0; right:0; background:#1e293b; border:2px solid #3b82f6; z-index:1000; max-height:200px; overflow-y:auto; border-radius: 0 0 8px 8px;"></div>
+                                        <input type="hidden" class="name-input" value="${rec.baseName}">
+                                    `}
+                                </td>
+                                <td style="padding: 15px; text-align: center;">
+                                    <div class="status-indicator">
+                                        <i class="fas fa-times-circle" style="color: #ef4444; font-size: 1.8rem;"></i>
+                                        <span style="display:block; font-size: 0.7rem; font-weight: 900; color: #ef4444;">BLOQUEADO</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer" style="background: #1e1e2e; border-top: 1px solid #334155; padding: 1.5rem 2.5rem; display: flex; justify-content: space-between; align-items: center; border-radius: 0 0 12px 12px;">
+                <button class="cancel-modal" style="background: transparent; border: 1px solid #475569; color: #64748b; padding: 12px 25px; border-radius: 10px; cursor: pointer; font-size: 0.9rem;">CANCELAR</button>
+                <button id="btnApplyCorrections" style="background: ${isNameStep ? '#f59e0b' : '#10b981'}; color: white; border: none; padding: 15px 40px; border-radius: 10px; cursor: pointer; font-weight: 900; font-size: 1rem;">
+                    ${isNameStep ? 'SIGUIENTE: VALIDAR NK <i class="fas fa-chevron-right"></i>' : 'FINALIZAR Y CARGAR <i class="fas fa-check-double"></i>'}
+                </button>
             </div>
         </div>
     `;
-    
-    document.body.appendChild(modal);
-    const allValidNames = Array.from(getValidNamesSet());
-    const groups = window.EQUIVALENCY_ROWS || [];
 
-    modal.querySelectorAll('.name-input').forEach(input => {
-        const row = input.closest('tr');
+    document.body.appendChild(modal);
+
+    const rows = Array.from(modal.querySelectorAll('#correctionTableBody tr'));
+    
+    const validateRow = (row) => {
+        const input = isNameStep ? row.querySelector('.name-input') : row.querySelector('.nk-row-input');
+        const val = input.value.trim().toUpperCase();
+        const isValid = isNameStep ? isValidColorName(val) : isValidNK(val);
+        
+        const icon = row.querySelector('.status-indicator i');
+        const text = row.querySelector('.status-indicator span');
+        
+        if (isValid) {
+            icon.className = 'fas fa-check-circle'; icon.style.color = '#10b981';
+            text.textContent = 'LISTO'; text.style.color = '#10b981';
+            input.style.borderColor = '#10b981';
+        } else {
+            icon.className = 'fas fa-times-circle'; icon.style.color = '#ef4444';
+            text.textContent = 'BLOQUEADO'; text.style.color = '#ef4444';
+            input.style.borderColor = isNameStep ? '#ef4444' : '#3b82f6';
+        }
+    };
+
+    rows.forEach(row => {
+        const input = isNameStep ? row.querySelector('.name-input') : row.querySelector('.nk-row-input');
         const sugBox = row.querySelector('.suggestion-box');
-        const famSelector = row.querySelector('.family-selector');
-        const famInput = row.querySelector('.family-filter-input');
-        const famSugBox = row.querySelector('.family-suggestion-box');
-        const hiddenFamId = row.querySelector('.selected-family-id');
 
         input.oninput = () => {
             const val = input.value.trim().toUpperCase();
-            if (!val) { sugBox.style.display = 'none'; return; }
-            const matches = allValidNames.filter(n => n.includes(val)).slice(0, 5);
-            if (matches.length > 0) {
-                sugBox.style.display = 'block';
-                sugBox.innerHTML = matches.map(m => `<div class="suggestion-item" style="padding:5px; cursor:pointer; color:white; border-bottom:1px solid #2d3748;">${m}</div>`).join('');
-                sugBox.querySelectorAll('div').forEach(d => d.onclick = () => {
-                    input.value = d.textContent; sugBox.style.display = 'none'; famSelector.style.display = 'none';
-                    row.querySelector('.status-cell i').className = 'fas fa-check-circle';
-                    row.querySelector('.status-cell i').style.color = '#10b981';
-                });
-            } else { sugBox.style.display = 'none'; famSelector.style.display = 'block'; }
-        };
+            if (val.length < 2) { sugBox.style.display = 'none'; validateRow(row); return; }
 
-        famInput.oninput = () => {
-            const val = famInput.value.trim().toUpperCase();
-            if (!val) { famSugBox.style.display = 'none'; return; }
-            const matches = groups.filter(g => g[0].toUpperCase().includes(val) || (g[1] && g[1].toUpperCase().includes(val))).slice(0, 5);
-            famSugBox.style.display = 'block';
-            let html = matches.map(g => `<div class="suggestion-item" data-id="${g[0]}" style="padding:5px; cursor:pointer; color:white; border-bottom:1px solid #2d3748;"><strong>${g[0]}</strong> - ${g[1]||''}</div>`).join('');
-            html += `<div class="suggestion-item create-new" data-id="${val}" style="padding:5px; cursor:pointer; color:#00e5ff;">+ Crear: ${val}</div>`;
-            famSugBox.innerHTML = html;
-            famSugBox.querySelectorAll('.suggestion-item').forEach(d => d.onclick = () => {
-                hiddenFamId.value = d.dataset.id; famInput.value = d.dataset.id; famSugBox.style.display = 'none';
-                famInput.style.borderColor = '#10b981';
-            });
+            let matches = [];
+            if (isNameStep) {
+                const families = Array.isArray(window.EQUIVALENCY_ROWS) ? window.EQUIVALENCY_ROWS : [];
+                const allColors = [];
+                families.forEach(f => {
+                    const groupId = f[0];
+                    for (let i = 1; i < f.length; i++) {
+                        if (f[i]) allColors.push({ name: f[i].toUpperCase(), group: groupId });
+                    }
+                });
+                matches = allColors.filter(c => c.name.includes(val)).slice(0, 15);
+            } else {
+                matches = Array.from(masterNksSet).filter(nk => nk.includes(val)).slice(0, 10);
+            }
+
+            if (matches.length > 0) {
+                sugBox.innerHTML = matches.map(m => {
+                    const text = isNameStep ? `<strong>${m.name}</strong> <small style="color:#64748b;">(Grupo: ${m.group})</small>` : `<strong>${m}</strong>`;
+                    const value = isNameStep ? m.name : m;
+                    return `<div class="sug-item" data-value="${value}" style="padding:10px; cursor:pointer; color:white; border-bottom:1px solid #334155;">${text}</div>`;
+                }).join('');
+                sugBox.style.display = 'block';
+                sugBox.querySelectorAll('.sug-item').forEach(item => {
+                    item.onclick = () => {
+                        input.value = item.dataset.value;
+                        sugBox.style.display = 'none';
+                        validateRow(row);
+                    };
+                });
+            } else {
+                sugBox.style.display = 'none';
+            }
+            validateRow(row);
         };
+        input.onblur = () => setTimeout(() => sugBox.style.display = 'none', 200);
+        validateRow(row);
     });
 
     modal.querySelector('#btnApplyCorrections').onclick = async () => {
-        const rows = modal.querySelectorAll('#correctionTableBody tr');
-        const corrected = [];
-        let allValid = true;
-        const btn = modal.querySelector('#btnApplyCorrections');
-        btn.disabled = true; btn.innerHTML = 'GUARDANDO...';
-
-        for (const row of rows) {
-            const id = row.dataset.id;
-            const input = row.querySelector('.name-input');
-            const hiddenFamId = row.querySelector('.selected-family-id');
-            const newName = input.value.trim().toUpperCase();
-            const selectedFam = hiddenFamId.value;
-            const original = invalidRecords.find(r => String(r.id) === String(id));
-            if (!original) continue;
-
-            if (isValidColorName(newName)) {
-                corrected.push({ ...original, baseName: newName, name: `${newName} ${original.nk || ''}`.trim(), nk: original.nk });
-            } else if (newName && selectedFam) {
-                // --- LÓGICA PARA TABLA CON ARRAY (grupo_id, colores) ---
-                let success = false;
-                let lastErr = '';
-
-                    try {
-                        // 1. Obtener el registro (sin usar .single() para evitar error 406)
-                        const { data: results, error: fetchError } = await supabase
-                            .from('equivalencias')
-                            .select('colores')
-                            .eq('grupo_id', selectedFam);
-
-                        const existingRow = results && results.length > 0 ? results[0] : null;
-
-                        if (existingRow) {
-                            // 2. Si existe, añadir al array si no está ya
-                            const updatedColores = Array.isArray(existingRow.colores) ? [...existingRow.colores] : [];
-                            if (!updatedColores.includes(newName)) {
-                                updatedColores.push(newName);
-                                const { error: updateError } = await supabase
-                                    .from('equivalencias')
-                                    .update({ colores: updatedColores })
-                                    .eq('grupo_id', selectedFam);
-                                
-                                if (!updateError) success = true;
-                                else lastErr = updateError.message;
-                            } else {
-                                success = true; 
-                            }
-                        } else {
-                            // 3. Si no existe, insertar nuevo registro
-                            const { error: insertError } = await supabase
-                                .from('equivalencias')
-                                .insert({
-                                    grupo_id: selectedFam,
-                                    colores: [newName]
-                                });
-                            
-                            if (!insertError) success = true;
-                            else lastErr = insertError.message;
-                        }
-                    } catch (err) {
-                    lastErr = err.message;
-                }
-
-                if (success) {
-                    corrected.push({ ...original, baseName: newName, name: `${newName} ${original.nk || ''}`.trim(), nk: original.nk });
-                    addNameToLocalCatalog(newName);
-                } else {
-                    alert(`Error en tabla 'equivalencias' [grupo_id, colores]: ${lastErr}`);
-                    allValid = false;
-                    break;
-                }
-            } else { allValid = false; input.classList.add('error-border'); }
+        if (!rows.every(r => r.querySelector('.status-indicator span').textContent.trim() === 'LISTO')) {
+            alert('Debes corregir todos los registros antes de continuar.');
+            return;
         }
-        if (allValid) {
-            const nks = modal.querySelectorAll('.nk-checkbox:checked');
-            for (const cb of nks) await addMasterNK(cb.dataset.nk);
-            modal.remove(); onComplete(corrected);
-        } else { btn.disabled = false; btn.innerHTML = 'REINTENTAR'; }
+
+        const btn = modal.querySelector('#btnApplyCorrections');
+        btn.disabled = true; btn.innerHTML = 'PROCESANDO...';
+
+        if (!isNameStep) {
+            const newNks = [...new Set(rows.map(r => r.querySelector('.nk-row-input').value.trim().toUpperCase()).filter(nk => !isValidNK(nk)))];
+            if (newNks.length > 0 && confirm(`¿Registrar estos NKs como nuevos?\n${newNks.join(', ')}`)) {
+                for (const nk of newNks) await addMasterNK(nk);
+            }
+        }
+
+        const corrected = rows.map(row => ({
+            id: row.dataset.id,
+            baseName: row.querySelector('.name-input').value.trim().toUpperCase(),
+            nk: row.querySelector('.nk-row-input').value.trim().toUpperCase()
+        }));
+
+        modal.remove();
+        onComplete(corrected);
     };
-    modal.querySelector('.cancel-modal').onclick = () => modal.remove();
+
+    modal.querySelector('.cancel-modal').onclick = () => {
+        if (confirm('¿Cancelar carga de archivo?')) { modal.remove(); onComplete(null); }
+    };
+}
+
+export function revalidateRecord(name, nk) {
+    let rawName = (name || '').toUpperCase().trim();
+    rawName = rawName.replace(/\s+NK[A-Z0-9\-]+$/i, '').trim();
+    const parts = rawName.split(/\s+/);
+    if (parts.length > 1) {
+        const lastPart = parts[parts.length - 1];
+        if (/[0-9]/.test(lastPart) && lastPart.length >= 5) rawName = parts.slice(0, -1).join(' ');
+    }
+    const cleanBase = rawName.replace(/\s*\([^)]*\)/g, '').trim();
+    const cleanNk = (nk || '').trim().toUpperCase();
+
+    return {
+        isNameValid: isValidColorName(cleanBase),
+        isNkValid: isValidNK(cleanNk),
+        cleanBase,
+        cleanNk
+    };
 }

@@ -19,19 +19,15 @@ export function compareFiles(primaryData, secondaryData, mode = 'fusion') {
     const secondaryByNK = new Map();
     
     for (const color of primaryData) {
-        const nk = getNK(color);
-        if (nk) {
-            if (!primaryByNK.has(nk)) primaryByNK.set(nk, []);
-            primaryByNK.get(nk).push(color);
-        }
+        const nk = getNK(color) || 'S/N'; // S/N = Sin NK
+        if (!primaryByNK.has(nk)) primaryByNK.set(nk, []);
+        primaryByNK.get(nk).push(color);
     }
     
     for (const color of secondaryData) {
-        const nk = getNK(color);
-        if (nk) {
-            if (!secondaryByNK.has(nk)) secondaryByNK.set(nk, []);
-            secondaryByNK.get(nk).push(color);
-        }
+        const nk = getNK(color) || 'S/N';
+        if (!secondaryByNK.has(nk)) secondaryByNK.set(nk, []);
+        secondaryByNK.get(nk).push(color);
     }
     
     const results = [];
@@ -150,7 +146,7 @@ function compareCiclico(primaryData, secondaryData) {
     primaryData.forEach(r => {
         const cleanBase = (r.baseName || r.name || '').replace(/\s*\([^)]*\)/g, '').toUpperCase().trim();
         const groupId = getGroupIdForColor(cleanBase) || cleanBase;
-        const nk = (r.nk || '').trim().toUpperCase();
+        const nk = (r.nk || '').trim().toUpperCase() || 'S/N';
         const key = `${groupId}|${nk}`;
         
         if (!pMap.has(key)) pMap.set(key, []);
@@ -160,7 +156,7 @@ function compareCiclico(primaryData, secondaryData) {
     secondaryData.forEach(r => {
         const cleanBase = (r.baseName || r.name || '').replace(/\s*\([^)]*\)/g, '').toUpperCase().trim();
         const groupId = getGroupIdForColor(cleanBase) || cleanBase;
-        const nk = (r.nk || '').trim().toUpperCase();
+        const nk = (r.nk || '').trim().toUpperCase() || 'S/N';
         const key = `${groupId}|${nk}`;
         
         if (!sMap.has(key)) sMap.set(key, []);
