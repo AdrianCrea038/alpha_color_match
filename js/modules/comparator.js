@@ -12,20 +12,21 @@ function getNK(record) {
 
 export function compareFiles(primaryData, secondaryData, mode = 'fusion') {
     if (mode === 'ciclico') {
-        return compareCiclico(primaryData, secondaryData);
+        return compareStrict(primaryData, secondaryData);
     }
 
     const primaryByNK = new Map();
     const secondaryByNK = new Map();
     
+    // Agrupar por NK estricto (ya no usamos expresiones regulares invasivas, confiamos en la separación previa)
     for (const color of primaryData) {
-        const nk = getNK(color) || 'S/N'; // S/N = Sin NK
+        const nk = (color.nk || '').trim().toUpperCase() || 'S/N';
         if (!primaryByNK.has(nk)) primaryByNK.set(nk, []);
         primaryByNK.get(nk).push(color);
     }
     
     for (const color of secondaryData) {
-        const nk = getNK(color) || 'S/N';
+        const nk = (color.nk || '').trim().toUpperCase() || 'S/N';
         if (!secondaryByNK.has(nk)) secondaryByNK.set(nk, []);
         secondaryByNK.get(nk).push(color);
     }
@@ -41,47 +42,39 @@ export function compareFiles(primaryData, secondaryData, mode = 'fusion') {
         const secondaryColors = secondaryByNK.get(nk) || [];
         const groups = new Map();
         
+        // Emparejamos estrictamente por el Nombre Base Exacto (no por ID de familia ni CMYK)
         for (const pc of primaryColors) {
-            const eqGroup = getAllEquivalentNames(pc.baseName);
-            const groupKey = eqGroup[0];
-            // Crear una clave única que combine el grupo de equivalencia y el CMYK
-            const cmykKey = (pc.cmyk || []).map(v => parseFloat(v).toFixed(2)).join('|');
-            const uniqueKey = `${groupKey}_${cmykKey}`;
-            
-            if (!groups.has(uniqueKey)) groups.set(uniqueKey, { primarios: [], secundarios: [], groupKey, cmykKey });
-            groups.get(uniqueKey).primarios.push(pc);
+            const cleanName = String(pc.baseName || pc.name || '').trim().toUpperCase();
+            if (!groups.has(cleanName)) groups.set(cleanName, { primarios: [], secundarios: [], nameKey: cleanName });
+            groups.get(cleanName).primarios.push(pc);
         }
         
         for (const sc of secondaryColors) {
-            const eqGroup = getAllEquivalentNames(sc.baseName);
-            const groupKey = eqGroup[0];
-            const cmykKey = (sc.cmyk || []).map(v => parseFloat(v).toFixed(2)).join('|');
-            const uniqueKey = `${groupKey}_${cmykKey}`;
-            
-            if (!groups.has(uniqueKey)) groups.set(uniqueKey, { primarios: [], secundarios: [], groupKey, cmykKey });
-            groups.get(uniqueKey).secundarios.push(sc);
+            const cleanName = String(sc.baseName || sc.name || '').trim().toUpperCase();
+            if (!groups.has(cleanName)) groups.set(cleanName, { primarios: [], secundarios: [], nameKey: cleanName });
+            groups.get(cleanName).secundarios.push(sc);
         }
         
-        for (const [uniqueKey, group] of groups) {
-            const { primarios, secundarios, groupKey } = group;
+        for (const [nameKey, group] of groups) {
+            const { primarios, secundarios } = group;
             const groupId = `group_${nk}_${groupCounter++}`;
-            const groupDisplayId = getGroupIdForColor(groupKey);
+            
+            // El ID solo se usa para visualización en UI, no para mezclar colores distintos
+            const groupDisplayId = getGroupIdForColor(nameKey) || 'S/F';
             
             if (primarios.length && secundarios.length) {
-                // Si ambos existen y están en este grupo, es porque tienen el mismo CMYK (por la uniqueKey)
+                // Si ambos archivos tienen este mismo Nombre Exacto + NK
                 for (const primary of primarios) {
                     for (const secondary of secundarios) {
-                        const isExact = primary.baseName === secondary.baseName;
-                        
                         results.push({
                             id: `primary_${primary.tempId || primary.id || Math.random()}`,
                             groupId,
                             groupDisplayId,
-                            groupKey,
+                            groupKey: nameKey, // El nombre exacto es la clave ahora
                             nk,
                             primaryData: { ...primary },
                             secondaryData: { ...secondary },
-                            matchType: isExact ? 'exact' : 'equivalent',
+                            matchType: 'exact',
                             isPending: false
                         });
                         processedPrimary.add(primary.tempId || primary.id);
@@ -95,7 +88,7 @@ export function compareFiles(primaryData, secondaryData, mode = 'fusion') {
                             id: `pending_primary_${primary.tempId || primary.id || Math.random()}`,
                             groupId: null,
                             groupDisplayId,
-                            groupKey,
+                            groupKey: nameKey,
                             nk,
                             primaryData: { ...primary },
                             secondaryData: null,
@@ -112,7 +105,7 @@ export function compareFiles(primaryData, secondaryData, mode = 'fusion') {
                             id: `pending_secondary_${secondary.tempId || secondary.id || Math.random()}`,
                             groupId: null,
                             groupDisplayId,
-                            groupKey,
+                            groupKey: nameKey,
                             nk,
                             primaryData: null,
                             secondaryData: { ...secondary },
@@ -126,10 +119,11 @@ export function compareFiles(primaryData, secondaryData, mode = 'fusion') {
         }
     }
     
+    // Ordenar alfabéticamente por Nombre y NK
     results.sort((a, b) => {
         const gc = (a.groupKey || '').localeCompare(b.groupKey || '');
         if (gc !== 0) return gc;
-        const nc = a.nk.localeCompare(b.nk);
+        const nc = (a.nk || '').localeCompare(b.nk || '');
         if (nc !== 0) return nc;
         return (a.primaryData?.name || a.secondaryData?.name || '').localeCompare(b.primaryData?.name || b.secondaryData?.name || '');
     });
@@ -137,62 +131,61 @@ export function compareFiles(primaryData, secondaryData, mode = 'fusion') {
     return results;
 }
 
-function compareCiclico(primaryData, secondaryData) {
-    const pMap = new Map();
-    const sMap = new Map();
+function compareValues(p, s) {
+    const cmykMatch = (p.cmyk || []).every((v, idx) => Math.abs(v - ((s.cmyk || [])[idx] || 0)) < 0.0001);
+    const labMatch = (p.lab || []).every((v, idx) => Math.abs(v - ((s.lab || [])[idx] || 0)) < 0.01);
+    return (!cmykMatch || !labMatch) ? { cmyk: !cmykMatch, lab: !labMatch } : null;
+}
+
+export function compareStrict(masterData, secondaryData) {
     const results = [];
-    
-    // Agrupar por grupo de equivalencia (DB) + NK
-    primaryData.forEach(r => {
-        const cleanBase = (r.baseName || r.name || '').replace(/\s*\([^)]*\)/g, '').toUpperCase().trim();
-        const groupId = getGroupIdForColor(cleanBase) || cleanBase;
-        const nk = (r.nk || '').trim().toUpperCase() || 'S/N';
-        const key = `${groupId}|${nk}`;
-        
-        if (!pMap.has(key)) pMap.set(key, []);
-        pMap.get(key).push(r);
+    const masterMap = new Map();
+
+    masterData.forEach(r => {
+        const key = `${r.name.trim().toUpperCase()}|${(r.nk || '').trim().toUpperCase()}`;
+        masterMap.set(key, r);
     });
 
+    const matchedMasterKeys = new Set();
+
+    // Comparar Secundario contra Maestro
     secondaryData.forEach(r => {
-        const cleanBase = (r.baseName || r.name || '').replace(/\s*\([^)]*\)/g, '').toUpperCase().trim();
-        const groupId = getGroupIdForColor(cleanBase) || cleanBase;
-        const nk = (r.nk || '').trim().toUpperCase() || 'S/N';
-        const key = `${groupId}|${nk}`;
-        
-        if (!sMap.has(key)) sMap.set(key, []);
-        sMap.get(key).push(r);
-    });
+        const key = `${r.name.trim().toUpperCase()}|${(r.nk || '').trim().toUpperCase()}`;
+        const masterItem = masterMap.get(key);
 
-    const allKeys = new Set([...pMap.keys(), ...sMap.keys()]);
-
-    allKeys.forEach(key => {
-        const pList = pMap.get(key) || [];
-        const sList = sMap.get(key) || [];
-        const max = Math.max(pList.length, sList.length);
-
-        for (let i = 0; i < max; i++) {
-            const p = pList[i];
-            const s = sList[i];
-
-            let type = 'exact';
-            if (!p) type = 'additional_in_secondary';
-            else if (!s) type = 'missing_in_secondary';
-            else {
-                // Si el nombre base es diferente pero están en el mismo grupo, es un "complementario"
-                const isExactName = p.name.trim().toUpperCase() === s.name.trim().toUpperCase();
-                const cmykMatch = p.cmyk.every((v, idx) => Math.abs(v - s.cmyk[idx]) < 0.0001);
-                
-                if (!isExactName || !cmykMatch) type = 'different';
-            }
-
+        if (masterItem) {
+            const diff = compareValues(masterItem, r);
             results.push({
-                matchType: type,
-                primaryData: p,
-                secondaryData: s,
-                isDuplicate: (p && pList.length > 1) || (s && sList.length > 1)
+                matchType: diff ? 'different' : 'exact',
+                primaryData: masterItem,
+                secondaryData: r,
+                diff
+            });
+            matchedMasterKeys.add(key);
+        } else {
+            results.push({
+                matchType: 'additional_in_secondary',
+                primaryData: null,
+                secondaryData: r
             });
         }
     });
 
-    return results;
+    // Identificar lo que falta del Maestro
+    masterData.forEach(r => {
+        const key = `${r.name.trim().toUpperCase()}|${(r.nk || '').trim().toUpperCase()}`;
+        if (!matchedMasterKeys.has(key)) {
+            results.push({
+                matchType: 'missing_in_secondary',
+                primaryData: r,
+                secondaryData: null
+            });
+        }
+    });
+
+    // Ordenar resultados: Errores primero
+    return results.sort((a, b) => {
+        const order = { 'different': 0, 'missing_in_secondary': 1, 'additional_in_secondary': 2, 'exact': 3 };
+        return (order[a.matchType] ?? 99) - (order[b.matchType] ?? 99);
+    });
 }

@@ -3,7 +3,7 @@ import { Auth } from './core/auth.js';
 import { loadFile, parseTxtContent } from './modules/fileLoader.js';
 import { validateAndCorrectRecords, setAppInstance, ensureValidColorCatalogLoaded } from './modules/nameValidator.js';
 import { compareFiles as compareLogic } from './modules/comparator.js';
-import { renderResults } from './modules/resultsRenderer.js';
+import { renderResults as renderResultsUI } from './modules/resultsRenderer.js';
 import { exportResults } from './modules/exporter.js';
 import { clearAllCache, saveComparatorState, loadComparatorState } from './modules/cacheManager.js';
 import { showNotification, escapeHtml } from './core/utils.js';
@@ -14,6 +14,10 @@ import { initAuditHandler } from './modules/auditHandler.js';
 // Hacer globales para acceso desde otros módulos y eventos inline
 window.showNotification = showNotification;
 window.escapeHtml = escapeHtml;
+window.FileLoader = {
+    parseTxt: parseTxtContent,
+    loadFile: loadFile
+};
 
 // Importar vistas
 import { PaletteValidatorView } from './views/paletteValidatorView.js';
@@ -23,11 +27,12 @@ import { AssignmentView } from './views/assignmentView.js';
 import { AdminView } from './views/adminView.js';
 import { ReportsView } from './views/reportsView.js';
 import { DashboardView } from './views/dashboardView.js';
-import { LinearizationValidatorView } from './views/linearizationValidatorView.js';
-import { supabase, getAllMasterNks, getCustomValidColorNames } from './core/supabaseClient.js';
+import { CyclicHubView } from './views/cyclicHubView.js';
+import { supabase, getAllMasterNks } from './core/supabaseClient.js';
 
 class AlphaColorMatch {
     constructor() {
+        window.app = this;
         this.auth = new Auth();
         
         this.primaryData = [];
@@ -50,7 +55,7 @@ class AlphaColorMatch {
         this.adminView = null;
         this.reportsView = null;
         this.dashboardView = null;
-        this.linearizationValidatorView = null;
+        this.cyclicHubView = null;
 
         // Inicializar el validador con la instancia de la app
         setAppInstance(this);
@@ -71,14 +76,6 @@ class AlphaColorMatch {
         await this.loadMasterData();
         this.initViews();
         this.initMenuNavigation();
-        // Re-comparar al cambiar de modo
-        document.querySelectorAll('input[name="compareMode"]').forEach(radio => {
-            radio.addEventListener('change', () => {
-                if (this.primaryData.length > 0 || this.secondaryData.length > 0) {
-                    this.compareFiles();
-                }
-            });
-        });
 
         this.bindEvents();
         await this.loadInbox();
@@ -107,7 +104,7 @@ class AlphaColorMatch {
             this.updateFileInfo('secondary', this.secondaryFileName || 'Archivo Recuperado', this.secondaryData.length);
         }
         if (this.results.length > 0) {
-            renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
+            this.renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
             this.validateExportReady();
         }
         
@@ -123,9 +120,32 @@ class AlphaColorMatch {
             // Cargar NKs maestros (Fallback/Seguridad)
             window.ALL_MASTER_NKS = await getAllMasterNks();
             
-            console.log(`✅ Catálogos y Equivalencias sincronizados correctamente.`);
+            // NUEVO: Cargar todos los registros maestros (CMYK) para referencia en auditoría
+            try {
+                const { getTxtVersions } = await import('./core/supabaseClient.js');
+                const versions = await getTxtVersions();
+                const activeTxts = versions.filter(v => v.activo);
+                let allMaster = [];
+                const { parseTxtContent } = await import('./modules/fileLoader.js');
+                
+                for (const txt of activeTxts) {
+                    const records = parseTxtContent(txt.contenido);
+                    if (records.length > 0) {
+                        allMaster = allMaster.concat(records);
+                        console.log(`📦 Cargados ${records.length} colores de: ${txt.nombre}`);
+                    } else {
+                        console.warn(`⚠️ El archivo maestro "${txt.nombre}" devolvió 0 registros. Posible error de formato.`);
+                    }
+                }
+                window.ALL_MASTER_RECORDS = allMaster;
+                console.log(`✅ TOTAL: ${allMaster.length} registros maestros en memoria.`);
+            } catch (e) {
+                console.warn('⚠️ No se pudieron cargar los registros maestros para referencia:', e);
+            }
+
+            console.log('✅ Catálogos sincronizados desde Supabase');
         } catch (error) {
-            console.error('❌ Error cargando catálogos:', error);
+            console.error('Error al sincronizar catálogos:', error);
             window.ALL_MASTER_NKS = [];
             window.ALL_VALID_COLOR_NAMES = [];
         }
@@ -196,14 +216,6 @@ class AlphaColorMatch {
         const replaceAllSecondaryBtn = document.getElementById('replaceAllSecondaryBtn');
         const clearCacheBtn = document.getElementById('clearCacheBtn');
 
-        // Selector de Modo
-        const modeRadios = document.querySelectorAll('input[name="compareMode"]');
-        modeRadios.forEach(radio => {
-            radio.addEventListener('change', (e) => {
-                const mode = e.target.value;
-                this.updateModeUI(mode);
-            });
-        });
         
         if (primaryInput) primaryInput.addEventListener('change', (e) => this.loadPrimaryFile(e));
         if (secondaryInput) secondaryInput.addEventListener('change', (e) => this.loadSecondaryFile(e));
@@ -216,7 +228,7 @@ class AlphaColorMatch {
 
         
         if (addAllSecBtn) {
-            addAllSecBtn.onclick = () => this.addAllSecondaryItems();
+            addAllSecBtn.onclick = () => this.addAllPendingItems();
         }
 
         // Eventos de Colapso Unificado (Triángulo)
@@ -239,28 +251,6 @@ class AlphaColorMatch {
         }
     }
 
-    updateModeUI(mode) {
-        const primaryTitle = document.querySelector('.upload-card:nth-child(1) h3');
-        const secondaryTitle = document.querySelector('.upload-card:nth-child(2) h3');
-        const compareBtn = document.getElementById('compareBtn');
-        const keepAllBtn = document.getElementById('keepAllMasterBtn');
-
-        if (mode === 'fusion') {
-            if (primaryTitle) primaryTitle.innerHTML = '🛡️ Archivo MASTER (Principal)';
-            if (secondaryTitle) secondaryTitle.innerHTML = '✏️ Archivo de CAMBIOS (Secundario)';
-            if (keepAllBtn) keepAllBtn.style.display = 'inline-block';
-            window.showNotification('Modo Fusión Activado', 'El secundario será auditado antes de la unión.', 'info');
-        } else {
-            if (primaryTitle) primaryTitle.innerHTML = '📁 Archivo Principal';
-            if (secondaryTitle) secondaryTitle.innerHTML = '🔄 Archivo Secundario';
-            if (keepAllBtn) keepAllBtn.style.display = 'none';
-        }
-        
-        localStorage.setItem('compareMode', mode);
-        this.results = [];
-        const resultsPanel = document.getElementById('resultsPanel');
-        if (resultsPanel) resultsPanel.style.display = 'none';
-    }
 
     keepAllMasterItems() {
         if (!this.results || this.results.length === 0) return;
@@ -279,15 +269,14 @@ class AlphaColorMatch {
         window.showNotification('Acción Masiva', `Se conservarán ${count} colores del archivo Master.`, 'success');
     }
     
-    addAllSecondaryItems() {
+    addAllPendingItems() {
         if (!this.results || this.results.length === 0) return;
         
         const btn = document.getElementById('addAllSecondaryBtn');
-        const originalContent = btn.innerHTML;
-        
         let count = 0;
+
         for (const item of this.results) {
-            if (item.matchType === 'pending_secondary') {
+            if (item.matchType === 'pending_primary' || item.matchType === 'pending_secondary') {
                 if (!this.selectedPending.has(item.id)) {
                     this.selectedPending.add(item.id);
                     this.deletedPending.delete(item.id);
@@ -296,23 +285,22 @@ class AlphaColorMatch {
             }
         }
         
-        // Feedback visual en el botón
+        // Feedback visual
         if (btn) {
-            btn.innerHTML = '<i class="fas fa-check-circle"></i> ¡LISTO! ' + count + ' Agregados';
-            btn.style.background = '#059669'; // Verde más oscuro/intenso
+            btn.innerHTML = '<i class="fas fa-check-circle"></i> ¡TODO AGREGADO! (' + count + ')';
+            btn.style.background = '#059669';
             btn.style.transform = 'scale(1.05)';
             
             setTimeout(() => {
                 btn.style.transform = '';
-                // El renderResults se encargará de deshabilitarlo si ya no hay pendientes
-                renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
+                this.renderResults();
             }, 600);
         } else {
-            renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
+            this.renderResults();
         }
         
         this.validateExportReady();
-        window.showNotification('Acción Masiva', `Se agregaron ${count} colores nuevos satisfactoriamente.`, 'success');
+        window.showNotification('Acción Masiva', `Se agregaron ${count} colores (Master + Secundario) satisfactoriamente.`, 'success');
     }
 
     async loadPrimaryFile(event) {
@@ -421,14 +409,20 @@ class AlphaColorMatch {
             return;
         }
 
-        // 5. RE-VALIDACIÓN DE DUPLICADOS (Crucial después de correcciones)
-        const finalDuplicateGroups = findDuplicateGroups(currentRecords);
-        if (finalDuplicateGroups.length > 0) {
-            window.showNotification('Duplicados Detectados', 'Las correcciones de nombre generaron duplicados. Por favor, resuélvalos.', 'warning');
+        // 5. RE-VALIDACIÓN DE DUPLICADOS (Crucial después de las correcciones de nombres)
+        let finalDuplicateGroups = findDuplicateGroups(currentRecords);
+        while (finalDuplicateGroups.length > 0) {
+            window.showNotification('Duplicados Detectados', 'Las correcciones de nombre generaron duplicados o ya existían en el archivo. Por favor, resuélvalos para continuar.', 'warning');
             const indicesToRemove = await showDuplicateModal(finalDuplicateGroups);
+            
             if (indicesToRemove.length > 0) {
                 currentRecords = currentRecords.filter((_, idx) => !indicesToRemove.includes(idx));
                 duplicatesResolved += indicesToRemove.length;
+                // Volver a buscar por si quedaron más (el usuario pudo elegir mal)
+                finalDuplicateGroups = findDuplicateGroups(currentRecords);
+            } else {
+                // Si el usuario cierra sin elegir, rompemos el bucle pero ya se le avisó
+                break;
             }
         }
 
@@ -441,6 +435,10 @@ class AlphaColorMatch {
         };
     }
     
+    renderResults() {
+        renderResultsUI(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
+    }
+
     async compareFiles() {
         if (this.primaryData.length === 0) {
             alert('⚠️ Cargue archivo principal primero.');
@@ -452,15 +450,13 @@ class AlphaColorMatch {
         }
         
         console.log('🔍 Comparando archivos...');
-        const modeSelect = document.querySelector('input[name="compareMode"]:checked');
-        const mode = modeSelect ? modeSelect.value : 'fusion';
         
         this.selectedPending.clear();
         this.deletedPending.clear();
         this.groupSelections.clear();
         this.manualGroupSelections.clear();
         
-        this.results = compareLogic(this.primaryData, this.secondaryData, mode);
+        this.results = compareLogic(this.primaryData, this.secondaryData);
         
         // --- AUDITORÍA FINAL: AUTO-AGREGAR MAESTRO ---
         // Si el color está en el principal pero no en el secundario, 
@@ -473,7 +469,7 @@ class AlphaColorMatch {
         // ---------------------------------------------
 
         this.logComparisonSession();
-        renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending); // Quitamos pendingAudit del renderizado final
+        this.renderResults();
         this.validateExportReady();
         this.saveCurrentState();
         
@@ -483,7 +479,7 @@ class AlphaColorMatch {
     selectGroup(groupId, source) {
         this.groupSelections.set(groupId, source);
         this.manualGroupSelections.add(groupId);
-        renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending, this.pendingAudit);
+        this.renderResults();
         this.validateExportReady();
         this.saveCurrentState();
     }
@@ -500,7 +496,7 @@ class AlphaColorMatch {
         for (const groupId of groups) {
             this.groupSelections.set(groupId, 'secondary');
         }
-        renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
+        this.renderResults();
         this.validateExportReady();
         this.saveCurrentState();
         
@@ -520,7 +516,7 @@ class AlphaColorMatch {
         if (this.selectedPending.has(itemId)) return;
         this.selectedPending.add(itemId);
         this.deletedPending.delete(itemId);
-        renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
+        this.renderResults();
         this.validateExportReady();
         this.saveCurrentState();
     }
@@ -529,7 +525,7 @@ class AlphaColorMatch {
         if (this.deletedPending.has(itemId)) return;
         this.deletedPending.add(itemId);
         this.selectedPending.delete(itemId);
-        renderResults(this.results, this.groupSelections, this.selectedPending, this.deletedPending);
+        this.renderResults();
         this.validateExportReady();
         this.saveCurrentState();
     }
@@ -660,7 +656,7 @@ class AlphaColorMatch {
         this.adminView = new AdminView(this, this.auth);
         this.reportsView = new ReportsView(this);
         this.dashboardView = new DashboardView(this);
-        this.linearizationValidatorView = new LinearizationValidatorView(this);
+        this.cyclicHubView = new CyclicHubView();
     }
     
     initMenuNavigation() {
@@ -673,7 +669,9 @@ class AlphaColorMatch {
             assignment: document.getElementById('assignmentView'),
             reports: document.getElementById('reportsView'),
             dashboard: document.getElementById('dashboardView'),
-            admin: document.getElementById('adminView')
+            admin: document.getElementById('adminView'),
+            comparator: document.getElementById('comparatorView'),
+            cyclicHub: document.getElementById('cyclicHubView')
         };
         
         const switchView = (viewName) => {
@@ -708,11 +706,21 @@ class AlphaColorMatch {
                 this.reportsView.updateFilters();
                 this.reportsView.render();
             }
+            if (viewName === 'assignment' && this.assignmentView) {
+                this.assignmentView.loadTxtList();
+                this.assignmentView.loadAssignmentsFromSupabase();
+            }
             if (viewName === 'dashboard' && this.dashboardView) {
                 this.dashboardView.render();
             }
             if (viewName === 'admin' && this.adminView) {
                 this.adminView.render();
+            }
+            if (viewName === 'cyclicHub' && this.cyclicHubView) {
+                this.cyclicHubView.init();
+            }
+            if (viewName === 'comparator') {
+                 // El comparador ya se maneja por eventos globales
             }
 
             // Controlar visibilidad del footer de instrucciones (solo para comparador)
@@ -726,7 +734,8 @@ class AlphaColorMatch {
         menuItems.forEach(item => {
             item.addEventListener('click', () => {
                 const viewName = item.dataset.view;
-                if (viewName && this.auth.hasPermission(viewName)) {
+                const requiredPerm = item.dataset.perm;
+                if (viewName && (!requiredPerm || this.auth.hasPermission(requiredPerm))) {
                     // Modal de selección eliminado - flujo directo a vista
                     switchView(viewName);
                 }

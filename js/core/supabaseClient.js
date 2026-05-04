@@ -58,6 +58,7 @@ export async function createUserInDB(username, password, permissions, isMaster =
 
 export async function updateUserInDB(userId, updates) {
     const updateData = {};
+    if (updates.username !== undefined) updateData.username = updates.username;
     if (updates.password !== undefined) updateData.password = updates.password;
     if (updates.permissions !== undefined) updateData.permisos = updates.permissions;
     if (updates.isMaster !== undefined) updateData.is_master = updates.isMaster;
@@ -128,6 +129,20 @@ export async function getTxtVersions(nk, plotter) {
         return [];
     }
     return data;
+}
+
+// Obtener TODOS los TXTs activos del sistema (para catálogo maestro global)
+export async function getAllActiveLibraryTxts() {
+    const { data, error } = await supabase
+        .from('library_txt')
+        .select('*')
+        .eq('activo', true);
+    
+    if (error) {
+        console.error('Error en getAllActiveLibraryTxts:', error);
+        return [];
+    }
+    return data || [];
 }
 
 // Obtener la versión activa de un NK + Plotter
@@ -266,69 +281,8 @@ export function extractNKFromContent(content) {
 }
 
 // ============================================
-// FUNCIONES PARA NOMBRES VALIDOS DE COLORES
+// FUNCIONES PARA MASTER NKs
 // ============================================
-
-const COLOR_NAMES_TABLE = 'valid_color_names';
-
-export async function getCustomValidColorNames() {
-    try {
-        const { data, error } = await supabase
-            .from(COLOR_NAMES_TABLE)
-            .select('name')
-            .order('name', { ascending: true });
-
-        if (error) {
-            console.warn('No se pudieron cargar nombres personalizados desde Supabase:', error.message);
-            return [];
-        }
-
-        return (data || [])
-            .map(item => (item?.name || '').trim().toUpperCase())
-            .filter(Boolean);
-    } catch (error) {
-        console.warn('Error en getCustomValidColorNames:', error.message);
-        return [];
-    }
-}
-
-export async function addCustomValidColorName(name, user = 'sistema') {
-    const normalized = (name || '').trim().toUpperCase();
-    if (!normalized) {
-        return { success: false, error: 'Nombre vacío' };
-    }
-
-    try {
-        const { data: existing, error: existingError } = await supabase
-            .from(COLOR_NAMES_TABLE)
-            .select('name')
-            .eq('name', normalized)
-            .maybeSingle();
-
-        if (existingError) {
-            console.error('Error verificando nombre existente:', existingError);
-            return { success: false, error: existingError.message };
-        }
-
-        if (existing) {
-            return { success: true, name: normalized, alreadyExists: true };
-        }
-
-        const { error } = await supabase
-            .from(COLOR_NAMES_TABLE)
-            .insert([{ name: normalized, created_by: user }]);
-
-        if (error) {
-            console.error('Error en addCustomValidColorName:', error);
-            return { success: false, error: error.message };
-        }
-
-        return { success: true, name: normalized };
-    } catch (error) {
-        console.error('Error inesperado en addCustomValidColorName:', error);
-        return { success: false, error: error.message };
-    }
-}
 
 export async function getAllMasterNks() {
     try {
@@ -384,27 +338,44 @@ export async function getEquivalencyGroupsFromDB() {
             return [];
         }
 
-        return processGroupData(data);
+        return await processGroupData(data);
     } catch (error) {
         console.error('❌ Error de red o ejecución:', error);
         return [];
     }
 }
 
-function processGroupData(data) {
+async function processGroupData(data) {
     if (!data || data.length === 0) return [];
     
     const result = [];
     data.forEach(item => {
-        // Priorizar grupo_id de tu tabla
-        const code = item.grupo_id || item.grupo || item.group_code || item.group_id || item.code || 'UNKNOWN';
+        // Priorizar nk_code o nk (según la estructura de Supabase)
+        const code = item.nk_code || item.nk || item.grupo_id || item.grupo || item.group_code || item.group_id || item.code || 'UNKNOWN';
         
-        // Manejar el array 'colores' que vimos en la foto
+        // Manejar el array 'colores'
         let names = [];
-        if (Array.isArray(item.colores)) {
-            names = item.colores.map(n => n.toString().trim().toUpperCase());
-        } else {
-            // Fallback por si hay filas con formato antiguo (texto simple)
+        if (item.colores) {
+            if (Array.isArray(item.colores)) {
+                names = item.colores.map(n => n.toString().trim().toUpperCase());
+            } else if (typeof item.colores === 'string') {
+                try {
+                    // Si viene como string JSON '["A", "B"]'
+                    const parsed = JSON.parse(item.colores);
+                    if (Array.isArray(parsed)) {
+                        names = parsed.map(n => n.toString().trim().toUpperCase());
+                    } else {
+                        names = [item.colores.trim().toUpperCase()];
+                    }
+                } catch (e) {
+                    // Si viene como string separado por comas 'A, B'
+                    names = item.colores.split(',').map(n => n.trim().toUpperCase());
+                }
+            }
+        }
+        
+        // Si no se encontraron en 'colores', buscar en campos individuales
+        if (names.length === 0) {
             const singleName = item.nombre || item.color_name || item.name || item.color || '';
             if (singleName) names = [singleName.toString().trim().toUpperCase()];
         }
@@ -415,7 +386,120 @@ function processGroupData(data) {
         }
     });
 
+    // NUEVO: Cargar master_nks con sus respectivos IDs de grupo para validación cruzada
+    try {
+        const { data: nks } = await supabase.from('master_nks').select('nk_code');
+        if (nks && nks.length > 0) {
+            window.ALL_MASTER_NKS = nks.map(n => n.nk_code.toUpperCase());
+            window.NK_TO_GROUP_MAP = new Map();
+            const aggressiveNormalizeNK = (v) => String(v || '').replace(/^NK/i, '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+            
+            nks.forEach(n => {
+                const rawNk = String(n.nk_code || '').trim().toUpperCase();
+                const rawGroup = String(n.group_id || n.grupo_id || '').trim().toUpperCase();
+                
+                if (rawNk && rawGroup) {
+                    const cleanKey = aggressiveNormalizeNK(rawNk);
+                    window.NK_TO_GROUP_MAP.set(cleanKey, rawGroup);
+                }
+            });
+            console.log(`✅ Sincronizados ${nks.length} NKs maestros y sus mapeos de grupo.`);
+        }
+    } catch (e) {
+        console.warn('No se pudo cargar mapeo de master_nks:', e);
+    }
+
     console.log(`✅ Sincronizados ${result.length} grupos desde la base de datos.`);
     return result;
 }
+
+// ============================================
+// AGREGAR NOMBRE A GRUPO DE EQUIVALENCIA
+// ============================================
+
+export async function addColorNameToGroup(groupNkCode, newColorName) {
+    try {
+        // 1. Obtener una fila para detectar el nombre de la columna de ID
+        const { data: firstRow } = await supabase.from('equivalencias').select().limit(1).maybeSingle();
+        if (!firstRow) return { success: false, error: 'No se pudo leer la estructura de la tabla.' };
+
+        // Buscar cuál de estas columnas existe en la tabla
+        const idColumn = ['nk', 'grupo_id', 'nk_code', 'group_id', 'code'].find(col => col in firstRow);
+        if (!idColumn) return { success: false, error: 'No se encontró la columna de ID en la tabla equivalencias.' };
+
+        console.log(`🔍 Usando columna "${idColumn}" para identificar el grupo.`);
+
+        // 2. Obtener la fila actual del grupo usando la columna detectada
+        const { data, error } = await supabase
+            .from('equivalencias')
+            .select()
+            .eq(idColumn, groupNkCode.trim().toUpperCase())
+            .maybeSingle();
+
+        if (error) throw error;
+        if (!data) return { success: false, error: `Grupo "${groupNkCode}" no encontrado.` };
+
+        // 3. Obtener lista actual de colores
+        let currentColors = [];
+        if (Array.isArray(data.colores)) {
+            currentColors = data.colores;
+        } else if (typeof data.colores === 'string') {
+            try { currentColors = JSON.parse(data.colores); } catch { currentColors = [data.colores]; }
+        }
+
+        const newName = newColorName.trim().toUpperCase();
+        if (currentColors.map(c => c.toUpperCase()).includes(newName)) {
+            return { success: false, error: `"${newName}" ya existe en este grupo.` };
+        }
+
+        // 4. Agregar el nuevo nombre
+        const updatedColors = [...currentColors, newName];
+        const { error: updateError } = await supabase
+            .from('equivalencias')
+            .update({ colores: updatedColors })
+            .eq(idColumn, groupNkCode.trim().toUpperCase());
+
+        if (updateError) throw updateError;
+        return { success: true, updatedColors };
+
+    } catch (err) {
+        console.error('Error en addColorNameToGroup:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+export async function createNewEquivalencyGroup(newGroupId, firstColorName) {
+    try {
+        // 1. Detectar columna de ID
+        const { data: firstRow } = await supabase.from('equivalencias').select().limit(1).maybeSingle();
+        const idColumn = ['nk', 'grupo_id', 'nk_code', 'group_id', 'code'].find(col => col && firstRow && col in firstRow) || 'nk';
+
+        // 2. Verificar si ya existe
+        const { data: existing } = await supabase
+            .from('equivalencias')
+            .select(idColumn)
+            .eq(idColumn, newGroupId.trim().toUpperCase())
+            .maybeSingle();
+
+        if (existing) return { success: false, error: `El grupo "${newGroupId}" ya existe.` };
+
+        // 3. Insertar nuevo grupo
+        const { error } = await supabase
+            .from('equivalencias')
+            .insert([{
+                [idColumn]: newGroupId.trim().toUpperCase(),
+                colores: [firstColorName.trim().toUpperCase()]
+            }]);
+
+        if (error) throw error;
+        return { success: true };
+
+    } catch (err) {
+        console.error('Error en createNewEquivalencyGroup:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+
+
 

@@ -107,6 +107,16 @@ export class PaletteValidatorView {
 
     updateToggleBtnUI() {
         if (!this.toggleExtraBtn) return;
+        
+        const table = document.getElementById('validatorTable');
+        if (table) {
+            if (this.hideExtraColumns) {
+                table.classList.add('hide-extra');
+            } else {
+                table.classList.remove('hide-extra');
+            }
+        }
+
         if (this.hideExtraColumns) {
             this.toggleExtraBtn.innerHTML = '<i class="fas fa-eye"></i> Mostrar TQ-O-FY-FP';
             this.toggleExtraBtn.style.borderColor = '#4ade80';
@@ -115,13 +125,6 @@ export class PaletteValidatorView {
             this.toggleExtraBtn.innerHTML = '<i class="fas fa-eye-slash"></i> Ocultar TQ-O-FY-FP';
             this.toggleExtraBtn.style.borderColor = '#a78bfa';
             this.toggleExtraBtn.style.color = '#a78bfa';
-        }
-
-        // Aplicar clase a la tabla si ya existe
-        const table = document.getElementById('validatorTable');
-        if (table) {
-            if (this.hideExtraColumns) table.classList.add('hide-extra');
-            else table.classList.remove('hide-extra');
         }
     }
 

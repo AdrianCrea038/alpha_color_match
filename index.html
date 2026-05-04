@@ -15,7 +15,9 @@
     <link rel="stylesheet" href="css/views/reports.css">
     <link rel="stylesheet" href="css/views/dashboard.css">
     <link rel="stylesheet" href="css/components/premium.css">
+    <link rel="stylesheet" href="css/components/prettyTable.css">
     <link rel="stylesheet" href="css/views/linearizationValidator.css">
+    <link rel="stylesheet" href="css/views/cyclicHub.css">
     <link rel="stylesheet" href="css/views/history.css">
     <link rel="stylesheet" href="css/responsive.css">
 </head>
@@ -25,6 +27,10 @@
             <div class="menu-item active" data-view="comparator" data-perm="comparator">
                 <i class="fas fa-shield-check"></i>
                 <span>Auditoría</span>
+            </div>
+            <div class="menu-item" data-view="cyclicHub" data-perm="linearization">
+                <i class="fas fa-sync-alt"></i>
+                <span>Cíclico 2</span>
             </div>
             <div class="menu-item" data-view="history" data-perm="history">
                 <i class="fas fa-inbox"></i>
@@ -72,20 +78,7 @@
 
                 <!-- Vista Comparador -->
                 <div id="comparatorView" class="view-content active">
-                    <!-- Selector de Modo de Comparación -->
-                    <div class="mode-selector-card" style="margin-bottom: 1.5rem; background: rgba(30, 30, 44, 0.4); border: 1px solid rgba(0, 229, 255, 0.1); border-radius: 12px; padding: 1rem;">
-                        <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
-                            <span style="font-size: 0.85rem; color: #9ca3af; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Modo de Auditoría:</span>
-                            <label class="premium-radio">
-                                <input type="radio" name="compareMode" value="fusion" checked>
-                                <span class="radio-label"><i class="fas fa-layer-group"></i> Fusión (Unificar TXTs)</span>
-                            </label>
-                            <label class="premium-radio">
-                                <input type="radio" name="compareMode" value="ciclico">
-                                <span class="radio-label"><i class="fas fa-sync-alt"></i> Estricta (Comparar Ciclo)</span>
-                            </label>
-                        </div>
-                    </div>
+                    <!-- Sección de archivos cargados -->
 
                     <div class="upload-section">
                         <div class="upload-card">
@@ -154,7 +147,7 @@
                             <h3>📊 Resultados de comparación</h3>
                             <div style="display: flex; gap: 0.5rem; align-items: center;">
                                 <button id="addAllSecondaryBtn" class="premium-btn" style="background: #10b981; font-size: 0.75rem; padding: 0.4rem 1rem;">
-                                    <i class="fas fa-plus-double"></i> Agregar todos los Nuevos
+                                    <i class="fas fa-plus-double"></i> AGREGAR TODO (MASTER + SEC)
                                 </button>
                                 <div class="stats-badge" id="statsBadges"></div>
                             </div>
@@ -165,12 +158,6 @@
                             </thead>
                             <tbody id="resultsTableBody"></tbody>
                         </table>
-                    </div>
-                    <!-- Sección Integrada: Auditoría de Archivo Único (Linearización) -->
-                    <div class="single-audit-integration" style="margin-top: 5rem; padding-top: 3rem; border-top: 2px dashed rgba(255,255,255,0.1);">
-                        <div id="linearizationValidatorView" style="display: block;">
-                            <!-- El contenido se inyecta dinámicamente por LinearizationValidatorView.js -->
-                        </div>
                     </div>
                 </div>
 
@@ -270,8 +257,24 @@
                     </div>
                 </div>
 
-                <!-- Vista Validación Linearización -->
-                <div id="linearizationValidatorView" class="view-content">
+                <!-- Hub de Cíclicos (Contenedor de Modos Separados) -->
+                <div id="cyclicHubView" class="view-content">
+                    <div class="cyclic-hub-selector">
+                        <div class="hub-option direct" onclick="window.cyclicHub.switchMode('direct')">
+                            <i class="fas fa-file-alt"></i>
+                            <h3>Validar 1 TXT</h3>
+                            <p>Auditoría de integridad contra Supabase</p>
+                        </div>
+                        <div class="hub-option cyclic" onclick="window.cyclicHub.switchMode('cyclic')">
+                            <i class="fas fa-sync-alt"></i>
+                            <h3>Validar 2 TXT</h3>
+                            <p>Comparación de Maestro vs Nuevo</p>
+                        </div>
+                    </div>
+
+                    <!-- SUB-VISTAS FÍSICAMENTE SEPARADAS -->
+                    <div id="directAuditContainer" style="display: none;"></div>
+                    <div id="cyclicAuditContainer" style="display: none;"></div>
                 </div>
 
                 <!-- Vista Desarrollo -->
