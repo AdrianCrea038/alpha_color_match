@@ -44,10 +44,8 @@ export function parseTxtContent(content, keepDuplicates = false) {
                 lab = [parseFloat(parts[6]), parseFloat(parts[7]), parseFloat(parts[8])];
             }
 
-            const nameWithSpace = nk ? `${baseName} ${nk}` : baseName;
-
             records.push({
-                tempId, id, name: nameWithSpace, nk, baseName, cmyk, lab, originalLine: line
+                tempId, id, name: baseName, nk, baseName, cmyk, lab, originalLine: line
             });
             continue;
         }

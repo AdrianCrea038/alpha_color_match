@@ -91,13 +91,17 @@ export class LinearizationValidatorView {
             <style>
                 /* Estilos mínimos necesarios que no están en el CSS global */
                 .mismatch-val {
-                    color: #f43f5e;
-                    font-weight: 900;
-                    text-decoration: underline;
-                    text-shadow: 0 0 5px rgba(244, 63, 94, 0.5);
-                    background: rgba(244, 63, 94, 0.1);
-                    padding: 0 2px;
-                    border-radius: 2px;
+                    background: #ef4444 !important;
+                    color: white !important;
+                    padding: 2px 5px !important;
+                    border-radius: 4px !important;
+                    font-weight: 900 !important;
+                    display: inline-block !important;
+                    box-shadow: 0 0 8px rgba(239, 68, 68, 0.6) !important;
+                }
+                .cmyk-separator {
+                    opacity: 0.3;
+                    margin: 0 4px;
                 }
             </style>
             <!-- SECCIÓN 1: AUDITORÍA CÍCLICA (COMPARACIÓN) -->
@@ -368,16 +372,13 @@ export class LinearizationValidatorView {
             const s = res.secondaryData;
             
             const formatCmykWithDiff = (pData, sData, isPrimary) => {
-                if (!pData || !sData) {
-                    const data = pData || sData;
-                    return (data.cmyk || []).map(v => Number(v).toFixed(6)).join(' / ');
-                }
-                
+                if (!pData || !sData) return (pData || sData).cmyk.map(v => Number(v).toFixed(6)).join(' / ');
                 return pData.cmyk.map((v, i) => {
-                    const diff = Math.abs(v - sData.cmyk[i]) > 0.000001;
-                    const val = Number(isPrimary ? pData.cmyk[i] : sData.cmyk[i]).toFixed(6);
-                    return diff ? `<span style="color: #f43f5e; font-weight: 900; background: rgba(244,63,94,0.1); padding: 0 2px; border-radius: 2px;">${val}</span>` : val;
-                }).join(' / ');
+                    const otherVal = sData.cmyk[i];
+                    const diff = Math.abs(Number(v) - Number(otherVal)) > 0.0001;
+                    const val = Number(isPrimary ? v : otherVal).toFixed(6);
+                    return diff ? `<span class="mismatch-val">${val}</span>` : val;
+                }).join('<span class="cmyk-separator">/</span>');
             };
 
             const formatInfo = (data, otherData, isPrimary) => {
@@ -807,19 +808,39 @@ export class LinearizationValidatorView {
                     rowClass = 'row-error-orange';
                 }
 
+                const formatCmykWithDiffLocal = (pData, sData, isPrimary) => {
+                    if (!pData || !sData) return (pData || sData).cmyk.map(v => Number(v).toFixed(6)).join(' / ');
+                    return pData.cmyk.map((v, i) => {
+                        const otherVal = sData.cmyk[i];
+                        const diff = Math.abs(Number(v) - Number(otherVal)) > 0.0001;
+                        const val = Number(isPrimary ? v : otherVal).toFixed(6);
+                        return diff ? `<span class="mismatch-val">${val}</span>` : val;
+                    }).join('<span class="cmyk-separator">/</span>');
+                };
+
                 tr.className = rowClass;
                 tr.innerHTML = `
                     <td>
                         <div class="comp-cell master">
-                            ${record.master ? `<div class="name">${record.master.name}</div><div class="cmyk">${record.master.cmyk.join(' / ')}</div>` : '---'}
+                            ${record.master ? `
+                                <div class="name" style="font-weight: 700; color: #94a3b8; font-size: 0.8rem;">${record.master.name}</div>
+                                <div class="cmyk" style="font-family: monospace; font-size: 0.75rem; margin-top: 5px;">
+                                    ${formatCmykWithDiffLocal(record.master, record.target, true)}
+                                </div>
+                            ` : '---'}
                         </div>
                     </td>
                     <td>
                         <div class="comp-cell target">
-                            ${record.target ? `<div class="name">${record.target.name}</div><div class="cmyk">${record.target.cmyk.join(' / ')}</div>` : '---'}
+                            ${record.target ? `
+                                <div class="name" style="font-weight: 700; color: #f1f5f9; font-size: 0.8rem;">${record.target.name}</div>
+                                <div class="cmyk" style="font-family: monospace; font-size: 0.75rem; margin-top: 5px;">
+                                    ${formatCmykWithDiffLocal(record.target, record.master, false)}
+                                </div>
+                            ` : '---'}
                         </div>
                     </td>
-                    <td><div class="diff-tags-container">${diffs.join(' ')}</div></td>
+                    <td><div class="diff-tags-container" style="display: flex; gap: 5px; flex-wrap: wrap;">${diffs.join(' ')}</div></td>
                     <td class="text-center">${comparisonStatus}</td>
                     <td class="text-center">
                         <button class="btn-icon-action edit" data-uid="${record.target?._uid || record.master?._uid}" title="Ver Detalles"><i class="fas fa-search-plus"></i></button>
@@ -1060,7 +1081,7 @@ export class LinearizationValidatorView {
 
                 this.records[sIdx] = {
                     ...this.records[sIdx],
-                    name: `${name} ${nk}`.trim(),
+                    name: name,
                     baseName: name,
                     nk: nk,
                     isManualValidated: section.querySelector('.inp-force').checked,
@@ -1145,7 +1166,7 @@ export class LinearizationValidatorView {
                         console.log(`✨ Sincronización: [${nk}] "${currentBase}" -> "${masterName}"`);
                         r.baseName = masterName;
                         r.officialName = masterName;
-                        r.name = `${masterName} ${nk}`.trim();
+                        r.name = masterName;
                     }
                 }
             });

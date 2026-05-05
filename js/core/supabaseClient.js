@@ -117,6 +117,10 @@ function generateTxtId(nk, plotter, version) {
 
 // Obtener todas las versiones de un NK + Plotter
 export async function getTxtVersions(nk, plotter) {
+    if (!nk || !plotter || nk === 'undefined' || plotter === 'undefined') {
+        console.warn('⚠️ Intento de consulta a library_txt con parámetros incompletos:', { nk, plotter });
+        return [];
+    }
     const { data, error } = await supabase
         .from('library_txt')
         .select('*')
@@ -147,6 +151,9 @@ export async function getAllActiveLibraryTxts() {
 
 // Obtener la versión activa de un NK + Plotter
 export async function getActiveTxt(nk, plotter) {
+    if (!nk || !plotter || nk === 'undefined' || plotter === 'undefined') {
+        return null;
+    }
     const { data, error } = await supabase
         .from('library_txt')
         .select('*')

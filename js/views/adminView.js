@@ -107,18 +107,48 @@ export class AdminView {
             if (error) throw error;
             if (!data || data.length === 0) { alert('No hay datos.'); return; }
 
-            // Generar contenido XLS (HTML Table format)
-            const headers = Object.keys(data[0]);
+            // 1. Identificar si hay columnas tipo array (como 'colores')
+            const baseHeaders = Object.keys(data[0]);
+            let maxArrayLen = 1;
+            const arrayCols = baseHeaders.filter(h => Array.isArray(data[0][h]));
+            
+            if (arrayCols.length > 0) {
+                // Calcular el máximo de elementos en cualquier fila para esas columnas
+                data.forEach(row => {
+                    arrayCols.forEach(h => {
+                        if (row[h] && row[h].length > maxArrayLen) maxArrayLen = row[h].length;
+                    });
+                });
+            }
+
+            // 2. Generar Cabeceras Expandidas
             let html = '<table border="1"><thead><tr>';
-            headers.forEach(h => html += `<th style="background:#3b82f6;color:white;">${h}</th>`);
+            baseHeaders.forEach(h => {
+                if (arrayCols.includes(h)) {
+                    // Si es la columna de colores, expandir cabeceras como Color 1, Color 2...
+                    for (let i = 1; i <= maxArrayLen; i++) {
+                        html += `<th style="background:#3b82f6;color:white;">${h.toUpperCase()} ${i}</th>`;
+                    }
+                } else {
+                    html += `<th style="background:#3b82f6;color:white;">${h.toUpperCase()}</th>`;
+                }
+            });
             html += '</tr></thead><tbody>';
             
+            // 3. Generar Filas
             data.forEach(row => {
                 html += '<tr>';
-                headers.forEach(h => {
+                baseHeaders.forEach(h => {
                     let val = row[h];
-                    if (Array.isArray(val)) val = val.join(', ');
-                    html += `<td>${val}</td>`;
+                    if (arrayCols.includes(h)) {
+                        const arr = Array.isArray(val) ? val : [val];
+                        // Rellenar celdas hasta el máximo
+                        for (let i = 0; i < maxArrayLen; i++) {
+                            html += `<td>${arr[i] || ''}</td>`;
+                        }
+                    } else {
+                        html += `<td>${val || ''}</td>`;
+                    }
                 });
                 html += '</tr>';
             });
@@ -131,7 +161,7 @@ export class AdminView {
             a.download = `backup_${tableName}_${new Date().toISOString().split('T')[0]}.xls`;
             a.click();
             URL.revokeObjectURL(url);
-            window.showNotification?.('Excel Generado', `Tabla ${tableName} exportada.`, 'success');
+            window.showNotification?.('Excel Generado', `Tabla ${tableName} exportada con celdas independientes.`, 'success');
         } catch (err) {
             alert('❌ Error al exportar Excel: ' + err.message);
         }

@@ -196,6 +196,11 @@ export class DirectAuditView {
                     r.isCmykInconsistent = (currentKey !== modaKey);
                 }
             }
+            // b. Detección de Paréntesis con Números (ej: (1))
+            const parenMatch = (r.name || '').match(/\([^)]*\)/);
+            r.hasNumberedParentheses = !!parenMatch;
+            r.parenthesisEvidence = parenMatch ? parenMatch[0] : '';
+            r.cleanNameForDisplay = (r.name || '').replace(/\([^)]*\)/g, '').trim();
 
             // 3. ESTADO GLOBAL DE ERROR
             const baseError = !r.isValidName || !r.isValidNk || r.isMissingNk || r.isDuplicate || r.isCorrupted || r.hasNumberedParentheses || r.isCmykInconsistent;
@@ -217,6 +222,14 @@ export class DirectAuditView {
         body.innerHTML = '';
 
         // Filtrado
+        // Ordenar: Agrupar por NK para que los equivalentes queden juntos
+        this.records.sort((a, b) => {
+            const nkA = (a.nk || 'ZZZ').toUpperCase();
+            const nkB = (b.nk || 'ZZZ').toUpperCase();
+            if (nkA !== nkB) return nkA.localeCompare(nkB);
+            return (a.cleanNameForDisplay || '').localeCompare(b.cleanNameForDisplay || '');
+        });
+
         let displayRecords = this.activeFilter ? this.records.filter(r => {
             if (this.activeFilter === 'err_name') return !r.isValidName && r.isValidNk; // SOLO nombres si el NK es correcto
             if (this.activeFilter === 'err_nk') return !r.isValidNk && !r.isMissingNk;
@@ -267,7 +280,7 @@ export class DirectAuditView {
             ${counts.cmyk > 0 ? `<div class="stat-badge-mini red has-count ${this.activeFilter === 'err_cmyk' ? 'active' : ''}" onclick="window.directView.setFilter('err_cmyk')"><i class="fas fa-flask"></i> CMYK > 100 (${counts.cmyk})</div>` : ''}
             ${counts.missing > 0 ? `<div class="stat-badge-mini blue has-count ${this.activeFilter === 'missing_nk' ? 'active' : ''}" onclick="window.directView.setFilter('missing_nk')"><i class="fas fa-info-circle"></i> Sin NK (${counts.missing})</div>` : ''}
             ${counts.dup > 0 ? `<div class="stat-badge-mini red has-count ${this.activeFilter === 'dup' ? 'active' : ''}" onclick="window.directView.setFilter('dup')"><i class="fas fa-copy"></i> Duplicados (${counts.dup})</div>` : ''}
-            ${counts.parentheses > 0 ? `<div class="stat-badge-mini orange has-count ${this.activeFilter === 'parentheses' ? 'active' : ''}" onclick="window.directView.setFilter('parentheses')"><i class="fas fa-exclamation"></i> Paréntesis (${counts.parentheses})</div>` : ''}
+            ${counts.parentheses > 0 ? `<div class="stat-badge-mini red has-count ${this.activeFilter === 'parentheses' ? 'active' : ''}" onclick="window.directView.setFilter('parentheses')"><i class="fas fa-exclamation-circle"></i> CORREGIR PARÉNTESIS (${counts.parentheses})</div>` : ''}
             ${Object.values(counts).every(c => c === 0) && this.records.length > 0 ? '<div class="stat-badge-mini" style="background: rgba(16, 185, 129, 0.2); border: 2px solid #10b981; color: #10b981; box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);"><i class="fas fa-check-circle"></i> TODO CORRECTO</div>' : ''}
         `;
 
@@ -288,15 +301,15 @@ export class DirectAuditView {
             } else if (r.isDuplicate) {
                 statusHtml = '<div class="status-badge red">Duplicado</div>';
                 rowClass = 'row-error-red';
+            } else if (r.hasNumberedParentheses) {
+                statusHtml = '<div class="status-badge red"><i class="fas fa-ban"></i> Error: Paréntesis</div>';
+                rowClass = 'row-error-red';
             } else if (r.isCmykInconsistent) {
                 statusHtml = '<div class="status-badge orange">CMYK Dif.</div>';
                 rowClass = 'row-error-orange';
             } else if (!r.isValidName) {
                 statusHtml = '<div class="status-badge amber">Mal Escrito</div>';
                 rowClass = 'row-error-amber';
-            } else if (r.hasNumberedParentheses) {
-                statusHtml = '<div class="status-badge orange">Paréntesis</div>';
-                rowClass = 'row-error-orange';
             } else if (r.isMissingNk) {
                 statusHtml = '<div class="status-badge blue">Sin NK</div>';
                 rowClass = 'row-error-blue';
@@ -304,20 +317,50 @@ export class DirectAuditView {
 
             tr.className = rowClass;
             
-            // Siempre mostramos solo el nombre base (limpio de NK) en todas las vistas
-            // ya que el NK tiene su propia columna dedicada.
-            const displayName = r.baseName || r.name;
+            // Siempre mostramos solo el nombre base (limpio de NK y de paréntesis si ya se procesó)
+            const displayName = r.cleanNameForDisplay || r.baseName || r.name;
+            const displayNk = r.nk + (r.parenthesisEvidence ? ` <span style="color: #ef4444; font-weight: bold;">${r.parenthesisEvidence}</span>` : '');
 
             tr.innerHTML = `
                 <td>${idx + 1}</td>
                 <td style="font-weight: 700;">${displayName}</td>
-                <td class="text-center" style="font-family: monospace;">${r.nk || '---'}</td>
+                <td class="text-center" style="font-family: monospace;">${displayNk || '---'}</td>
                 <td class="text-center" style="font-family: monospace; font-size: 0.8rem;">
-                    ${(r.cmyk || []).map(v => Number(v).toFixed(6)).join(' / ')}
+                    ${(() => {
+                        const cmyk = r.cmyk || [0,0,0,0];
+                        // Si hay inconsistencia, intentar resaltar contra la moda del grupo
+                        const groupKey = `${(r.baseName || r.name).trim().toUpperCase().replace(/^[0-9][0-9][A-Z]\s+/, '').replace(/^TM\s+/, '').trim()}|${(r.nk || '').trim().toUpperCase()}`;
+                        const group = this.records.filter(x => `${(x.baseName || x.name).trim().toUpperCase().replace(/^[0-9][0-9][A-Z]\s+/, '').replace(/^TM\s+/, '').trim()}|${(x.nk || '').trim().toUpperCase()}` === groupKey);
+                        
+                        let moda = null;
+                        if (group.length > 1) {
+                            const counts = {};
+                            group.forEach(g => {
+                                const k = g.cmyk.map(v => Number(v).toFixed(4)).join('|');
+                                counts[k] = (counts[k] || 0) + 1;
+                            });
+                            const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]);
+                            if (sorted.length > 1 || sorted[0][1] < group.length) {
+                                moda = sorted[0][0].split('|').map(v => parseFloat(v));
+                            }
+                        }
+
+                        return cmyk.map((v, i) => {
+                            const val = Number(v);
+                            const isDiff = moda && Math.abs(val - moda[i]) > 0.0001;
+                            const isBad = val > 100.000001 || val < -0.000001;
+                            
+                            if (isDiff || isBad) {
+                                return `<span style="background: #ef4444; color: white; padding: 1px 4px; border-radius: 4px; font-weight: 900; box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);">${val.toFixed(6)}</span>`;
+                            }
+                            return val.toFixed(6);
+                        }).join(' <span style="opacity: 0.3;">/</span> ');
+                    })()}
                 </td>
                 <td class="text-center">${statusHtml}</td>
                 <td class="actions">
-                    ${r.hasError ? `<button class="btn-icon approve-btn" onclick="window.directView.approveRecord('${r._uid}')" title="Aprobar Manualmente"><i class="fas fa-check-circle" style="color: #10b981;"></i></button>` : ''}
+                    ${r.hasNumberedParentheses ? `<button class="btn-icon" onclick="window.directView.moveParenthesisToNk('${r._uid}')" title="Limpiar Nombre y Mover Paréntesis a NK" style="background: rgba(239, 68, 68, 0.1); border-radius: 4px; padding: 2px 6px;"><i class="fas fa-exchange-alt" style="color: #ef4444;"></i></button>` : ''}
+                    ${(r.hasError && !r.hasNumberedParentheses) ? `<button class="btn-icon approve-btn" onclick="window.directView.approveRecord('${r._uid}')" title="Aprobar Manualmente"><i class="fas fa-check-circle" style="color: #10b981;"></i></button>` : ''}
                     <button class="btn-icon" onclick="window.directView.editRecord('${r._uid}')" title="Editar"><i class="fas fa-pencil-alt" style="color: #3b82f6;"></i></button>
                     <button class="btn-icon" onclick="window.directView.deleteRecord('${r._uid}')" title="Eliminar"><i class="fas fa-trash" style="color: #ef4444;"></i></button>
                 </td>
@@ -358,6 +401,24 @@ export class DirectAuditView {
         // Trigger preview update
         const event = new Event('input', { bubbles: true });
         document.getElementById('editC').dispatchEvent(event);
+    }
+
+    moveParenthesisToNk(uid) {
+        const record = this.records.find(r => r._uid === uid);
+        if (record && record.parenthesisEvidence) {
+            // 1. Mover evidencia al campo NK de forma permanente
+            record.nk = record.nk + ' ' + record.parenthesisEvidence;
+            // 2. Limpiar el nombre original (quitar paréntesis)
+            record.name = record.name.replace(/\([^)]*\)/g, '').trim();
+            // 3. Limpiar banderas
+            record.parenthesisEvidence = '';
+            record.hasNumberedParentheses = false;
+            // 4. Marcar como aprobado para que ya no cuente como error
+            record.isManuallyApproved = true;
+            
+            this.performValidation();
+            window.showNotification('Parentésis Movido', 'Se ha limpiado el nombre y movido la marca al NK.', 'success');
+        }
     }
 
     async approveRecord(uid) {

@@ -55,10 +55,9 @@ export async function ensureValidColorCatalogLoaded(forceReload = false) {
         }
     }
     const masterNks = await getAllMasterNks();
-    // Normalización estándar: Solo trim y mayúsculas, MANTENER EL "NK"
-    const standardNormalizeNK = (v) => String(v || '').trim().toUpperCase();
-    masterNksSet = new Set(masterNks.map(nk => standardNormalizeNK(nk)));
-    window.MASTER_NKS_SET = masterNksSet; // Exponer globalmente
+    window.ALL_MASTER_NKS = masterNks; // Sincronizar con utils.js
+    masterNksSet = new Set(masterNks.map(nk => String(nk || '').trim().toUpperCase()));
+    window.MASTER_NKS_SET = masterNksSet;
     validColorNamesLoaded = true;
 }
 
@@ -66,38 +65,40 @@ export function isValidColorName(fullName, ignoreCatalog = false) {
     if (!fullName || typeof fullName !== 'string') return false;
     if (ignoreCatalog) return true;
     
-    const map = window.EQUIVALENCE_MAP || EQUIVALENCE_MAP;
-    if (!map) return false;
+    let map = window.EQUIVALENCE_MAP || EQUIVALENCE_MAP;
+    
+    // Si el mapa está vacío, intentar usar el global o avisar
+    if (!map || map.size === 0) {
+        console.warn('⚠️ EQUIVALENCE_MAP vacío en validación.');
+        return false;
+    }
 
-    // Normalización AGRESIVA (Remover todo excepto letras y números)
     const aggNorm = (n) => String(n || '').toUpperCase().replace(/[^A-Z0-9]/gi, '');
-    
     const cleanFull = aggNorm(fullName);
-    const cleanBase = aggNorm(extractBaseName(fullName));
     
-    if (!cleanFull && !cleanBase) return false;
-    
-    // 1. INTENTO DIRECTO
-    if (map.has(cleanFull) || map.has(cleanBase)) return true;
+    // 1. RESPALDO DIRECTO: Si el nombre está tal cual en la lista de sugerencias
+    if (window.ALL_VALID_COLOR_NAMES && window.ALL_VALID_COLOR_NAMES.includes(fullName.trim().toUpperCase())) return true;
 
-    // 2. INTENTO TOLERANTE (Quitar prefijos/sufijos comunes como TM, TEAM, R)
-    // Ej: "69W TM CRIMSON R" -> "69WCRIMSON"
-    const stripTechnical = (s) => s
-        .replace(/^TM|TEAM|TEAMM/g, '') // Quitar prefijos al inicio
-        .replace(/R$/g, '')             // Quitar R al final
-        .replace(/REFILL$/g, '');       // Quitar REFILL al final
+    // 2. INTENTO DIRECTO (Nombre completo normalizado en el mapa)
+    if (map.has(cleanFull)) return true;
 
+    // 2. INTENTO CON BASE NAME (Sin NK)
+    const baseName = extractBaseName(fullName);
+    const cleanBase = aggNorm(baseName);
+    if (cleanBase && map.has(cleanBase)) return true;
+
+    // 3. INTENTO TOLERANTE (Quitar prefijos/sufijos técnicos)
+    const stripTechnical = (s) => s.replace(/^TM|TEAM|TEAMM/g, '').replace(/R$/g, '').replace(/REFILL$/g, '');
     const strippedFull = stripTechnical(cleanFull);
     const strippedBase = stripTechnical(cleanBase);
 
     if (strippedFull && map.has(strippedFull)) return true;
     if (strippedBase && map.has(strippedBase)) return true;
 
-    // 3. FALLBACK: Verificar si alguna de las llaves en el mapa contiene nuestro nombre limpio
-    // (Útil para casos donde el catálogo tiene el nombre más largo)
-    if (cleanBase.length > 3) {
+    // 4. FALLBACK: Búsqueda parcial (Solo si el nombre es lo suficientemente largo)
+    if (cleanBase.length > 4) {
         for (let key of map.keys()) {
-            if (key.includes(cleanBase) || cleanBase.includes(key)) return true;
+            if (key === cleanBase || key.includes(cleanBase) || cleanBase.includes(key)) return true;
         }
     }
     
@@ -106,8 +107,8 @@ export function isValidColorName(fullName, ignoreCatalog = false) {
 
 export async function ensureValidNksLoaded() {
     const masterNks = await getAllMasterNks();
-    const standardNormalizeNK = (v) => String(v || '').trim().toUpperCase();
-    masterNksSet = new Set(masterNks.map(nk => standardNormalizeNK(nk)));
+    window.ALL_MASTER_NKS = masterNks;
+    masterNksSet = new Set(masterNks.map(nk => String(nk || '').trim().toUpperCase()));
     window.MASTER_NKS_SET = masterNksSet;
     return masterNksSet;
 }
@@ -297,9 +298,9 @@ export async function validateAndCorrectRecords(records, type = 'secondary', opt
             return {
                 ...original,
                 ...(corrected ? {
-                    name: `${corrected.baseName} ${corrected.nk}`.trim(),
+                    name: corrected.baseName, // <--- Solo el nombre corregido, sin NK
                     baseName: corrected.baseName,
-                    nk: corrected.nk
+                    nk: corrected.nk // El NK se actualiza pero se mantiene en su propia columna
                 } : {}),
                 ...(cmykFixed ? { cmyk: cmykFixed } : {})
             };
@@ -341,10 +342,10 @@ function createCorrectionModal(auditRecords, stepType, onComplete, dominantNk = 
                         ${auditRecords.map(rec => `
                             <tr data-id="${rec.id}" class="audit-row" style="background: #1e293b; border-radius: 10px;">
                                 <td style="text-align: center; font-weight: 900; color: #475569;">${rec.id}</td>
-                                <td style="padding: 15px; color: #94a3b8; font-size: 0.8rem; font-family: monospace;">${rec.name}</td>
+                                <td style="padding: 15px; color: #94a3b8; font-size: 0.8rem; font-family: monospace;">${isNameStep ? (rec.baseName || rec.name) : (rec.nk || '---')}</td>
                                 <td style="padding: 15px; position: relative;">
                                     ${isNameStep ? `
-                                        <input type="text" class="name-input" placeholder="🔍 Escribe nombre..." value="${rec.name}" 
+                                        <input type="text" class="name-input" placeholder="🔍 Escribe nombre..." value="${rec.baseName || rec.name}" 
                                                style="width: 100%; background: #0b0f1a; color: white; border: 2px solid #ef4444; padding: 12px; border-radius: 8px; font-size: 1rem; font-weight: bold;">
                                         <div class="suggestion-box" style="display:none; position:absolute; left:0; right:0; background:#1e293b; border:2px solid #f59e0b; z-index:1000; max-height:200px; overflow-y:auto; border-radius: 0 0 8px 8px;"></div>
                                         
@@ -513,7 +514,12 @@ function createCorrectionModal(auditRecords, stepType, onComplete, dominantNk = 
                         addNameToLocalCatalog(colorToRegister);
                         if (window.EQUIVALENCE_MAP) {
                             const cleanName = colorToRegister.replace(/[^A-Z0-9]/gi, '');
-                            window.EQUIVALENCE_MAP.set(cleanName, groupToUse);
+                            // Guardar objeto completo para mantener compatibilidad con el resto del sistema
+                            window.EQUIVALENCE_MAP.set(cleanName, { 
+                                groupId: groupToUse, 
+                                masterName: colorToRegister, 
+                                names: [colorToRegister] 
+                            });
                         }
                         // Reflejar cambio en la UI
                         validateRow(row);

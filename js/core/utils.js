@@ -20,11 +20,14 @@ export function extractNK(fullName) {
         }
     }
 
-    // 2. Si no está en la tabla, buscamos si hay algo que parezca un NK al final (para marcar error)
+    // 2. Si no está en la tabla, buscar si la ÚLTIMA palabra parece un NK (mínimo 5 caracteres y tener números)
     const words = normalized.split(/\s+/);
-    const lastWord = words[words.length - 1];
-    if (lastWord && (lastWord.startsWith('NK') || lastWord.startsWith('T') || /[0-9]/.test(lastWord))) {
-        return lastWord; // Se devuelve para que isValidNK(lastWord) sea false y aparezca el error
+    if (words.length > 1) {
+        const lastWord = words[words.length - 1];
+        // Un NK suele ser largo. Si es corto (como 03S), es parte del nombre.
+        if (lastWord.length >= 5 && (lastWord.startsWith('NK') || (lastWord.startsWith('T') && /[0-9]/.test(lastWord)) || (/[0-9]/.test(lastWord) && lastWord.length >= 6))) {
+            return lastWord;
+        }
     }
     
     return null;
