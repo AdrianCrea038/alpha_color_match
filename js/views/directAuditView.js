@@ -86,7 +86,7 @@ export class DirectAuditView {
         if (!file) return;
 
         this.originalFileName = file.name;
-        window.showLoading?.('Procesando archivo...');
+        window.showLoading?.('Procesando Auditoría Directa...', 'Validando contra Base de Datos Maestra');
         try {
             const content = await file.text();
             // Usar el cargador global para parsear los datos
@@ -98,7 +98,7 @@ export class DirectAuditView {
             await ensureValidColorCatalogLoaded(true);
             
             await this.performValidation();
-            window.hideLoading?.();
+            // El loading se quita al final del renderizado de resultados
         } catch (err) {
             console.error("Error cargando archivo:", err);
             window.showNotification?.('Error', 'No se pudo procesar el archivo.', 'error');
@@ -147,7 +147,7 @@ export class DirectAuditView {
             
             // VALIDACIÓN UNIFICADA: Válido si está el nombre completo O el nombre base en catálogo
             const isValidName = (window.isValidColorName?.(fullName) || window.isValidColorName?.(baseName));
-            r.isValidName = isValidName;
+            r.isValidName = !!isValidName;
 
             r.hasParentheses = /\(|\)/.test(r.name);
             r.hasNumberedParentheses = /\(\d+\)/.test(r.name);
@@ -231,7 +231,7 @@ export class DirectAuditView {
         });
 
         let displayRecords = this.activeFilter ? this.records.filter(r => {
-            if (this.activeFilter === 'err_name') return !r.isValidName && r.isValidNk; // SOLO nombres si el NK es correcto
+            if (this.activeFilter === 'err_name') return !r.isValidName; // Mostrar todos los nombres mal escritos
             if (this.activeFilter === 'err_nk') return !r.isValidNk && !r.isMissingNk;
             if (this.activeFilter === 'err_cmyk') return r.isCorrupted;
             if (this.activeFilter === 'missing_nk') return r.isMissingNk;
@@ -262,7 +262,7 @@ export class DirectAuditView {
         // Estadísticas
         const counts = {
             nk: this.records.filter(r => !r.isValidNk && !r.isMissingNk).length,
-            name: this.records.filter(r => !r.isValidName && r.isValidNk).length, // Solo contar nombre si NK está bien
+            name: this.records.filter(r => !r.isValidName).length, // Todos los errores de nombre
             missing: this.records.filter(r => r.isMissingNk).length,
             dup: this.records.filter(r => r.isDuplicate).length,
             cmyk: this.records.filter(r => r.isCorrupted).length,
@@ -275,7 +275,7 @@ export class DirectAuditView {
                 <i class="fas fa-eye"></i> Todos (${this.records.length})
             </div>
             ${counts.nk > 0 ? `<div class="stat-badge-mini red has-count ${this.activeFilter === 'err_nk' ? 'active' : ''}" onclick="window.directView.setFilter('err_nk')"><i class="fas fa-times-circle"></i> NK No Disponible (${counts.nk})</div>` : ''}
-            ${counts.name > 0 ? `<div class="stat-badge-mini orange has-count ${this.activeFilter === 'err_name' ? 'active' : ''}" onclick="window.directView.setFilter('err_name')"><i class="fas fa-exclamation-triangle"></i> Mal Escrito (${counts.name})</div>` : ''}
+            ${counts.name > 0 ? `<div class="stat-badge-mini red has-count ${this.activeFilter === 'err_name' ? 'active' : ''}" onclick="window.directView.setFilter('err_name')"><i class="fas fa-exclamation-circle"></i> Mal Escrito (${counts.name})</div>` : ''}
             ${counts.inc > 0 ? `<div class="stat-badge-mini orange has-count ${this.activeFilter === 'inc' ? 'active' : ''}" onclick="window.directView.setFilter('inc')"><i class="fas fa-layer-group"></i> CMYK Diferente (${counts.inc})</div>` : ''}
             ${counts.cmyk > 0 ? `<div class="stat-badge-mini red has-count ${this.activeFilter === 'err_cmyk' ? 'active' : ''}" onclick="window.directView.setFilter('err_cmyk')"><i class="fas fa-flask"></i> CMYK > 100 (${counts.cmyk})</div>` : ''}
             ${counts.missing > 0 ? `<div class="stat-badge-mini blue has-count ${this.activeFilter === 'missing_nk' ? 'active' : ''}" onclick="window.directView.setFilter('missing_nk')"><i class="fas fa-info-circle"></i> Sin NK (${counts.missing})</div>` : ''}
@@ -308,8 +308,8 @@ export class DirectAuditView {
                 statusHtml = '<div class="status-badge orange">CMYK Dif.</div>';
                 rowClass = 'row-error-orange';
             } else if (!r.isValidName) {
-                statusHtml = '<div class="status-badge amber">Mal Escrito</div>';
-                rowClass = 'row-error-amber';
+                statusHtml = '<div class="status-badge red"><i class="fas fa-exclamation-circle"></i> Mal Escrito</div>';
+                rowClass = 'row-error-red';
             } else if (r.isMissingNk) {
                 statusHtml = '<div class="status-badge blue">Sin NK</div>';
                 rowClass = 'row-error-blue';
@@ -323,7 +323,7 @@ export class DirectAuditView {
 
             tr.innerHTML = `
                 <td>${idx + 1}</td>
-                <td style="font-weight: 700;">${displayName}</td>
+                <td style="font-weight: 700; color: ${!r.isValidName ? '#ef4444' : 'inherit'};">${displayName}</td>
                 <td class="text-center" style="font-family: monospace;">${displayNk || '---'}</td>
                 <td class="text-center" style="font-family: monospace; font-size: 0.8rem;">
                     ${(() => {
@@ -375,6 +375,9 @@ export class DirectAuditView {
                 ? `<i class="fas fa-lock"></i> BLOQUEADO (${errorCount} ERR)` 
                 : `<i class="fas fa-file-export"></i> EXPORTAR VALIDADO`;
         }
+
+        // Finalizar procesamiento y ocultar loading
+        setTimeout(() => window.hideLoading?.(), 500);
     }
 
     setFilter(filter) {

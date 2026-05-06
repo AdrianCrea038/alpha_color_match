@@ -4,52 +4,46 @@ export function normalizeSpaces(str) {
     return str.trim().replace(/\s+/g, ' ');
 }
 
+/**
+ * Extrae el código NK de un nombre completo únicamente si existe en el catálogo maestro.
+ * CERO ADIVINANZAS: Si no está en la tabla, no se separa.
+ */
 export function extractNK(fullName) {
-    if (!fullName) return null;
-    const normalized = normalizeSpaces(fullName).toUpperCase();
-    
-    // 1. ÚNICO CRITERIO: Buscar NKs que existen físicamente en la tabla maestra
-    // Se ordena por longitud para evitar que un NK corto "robe" parte de uno largo
-    const masterNks = (window.ALL_MASTER_NKS || []).map(n => n.toUpperCase()).sort((a, b) => b.length - a.length);
-    
-    for (const master of masterNks) {
-        // Buscamos el NK como palabra completa o al final del string
-        const regex = new RegExp(`\\b${master}\\b|${master}$`, 'i');
-        if (regex.test(normalized)) {
-            return master;
-        }
-    }
-
-    // 2. Si no está en la tabla, buscar si la ÚLTIMA palabra parece un NK (mínimo 5 caracteres y tener números)
-    const words = normalized.split(/\s+/);
-    if (words.length > 1) {
-        const lastWord = words[words.length - 1];
-        // Un NK suele ser largo. Si es corto (como 03S), es parte del nombre.
-        if (lastWord.length >= 5 && (lastWord.startsWith('NK') || (lastWord.startsWith('T') && /[0-9]/.test(lastWord)) || (/[0-9]/.test(lastWord) && lastWord.length >= 6))) {
-            return lastWord;
-        }
-    }
-    
-    return null;
-}
-
-export function extractBaseName(fullName) {
     if (!fullName) return '';
     const normalized = normalizeSpaces(fullName).toUpperCase();
+    const masterNks = (window.ALL_MASTER_NKS || []).map(n => n.toUpperCase()).sort((a, b) => b.length - a.length);
     
-    // 1. Quitar el NK si existe (aunque esté pegado al nombre)
-    const nk = extractNK(fullName);
-    let base = normalized;
-    if (nk) {
-        // Usamos un reemplazo global sin límites de palabra para despegarlo
-        base = normalized.replace(new RegExp(nk, 'gi'), '').trim();
+    // 1. Prioridad Máxima: NKs que están al final del string
+    for (const master of masterNks) {
+        if (normalized.endsWith(master)) return master;
     }
 
-    // 2. NO quitar prefijos técnicos (2DH, TM, etc.) - Son parte del nombre oficial
+    // 2. Segunda Prioridad: NKs que están en cualquier otra parte precedidos por espacio
+    for (const master of masterNks) {
+        if (normalized.includes(' ' + master)) return master;
+    }
+
+    return '';
+}
+
+/**
+ * Extrae el nombre base de un color eliminando ÚNICAMENTE el NK oficial detectado.
+ * Si el nombre tiene otros códigos en medio, SE QUEDAN para que el validador lo marque como ERROR.
+ */
+export function extractBaseName(fullName) {
+    if (!fullName) return '';
+    const nk = extractNK(fullName);
+    let base = normalizeSpaces(fullName).toUpperCase();
     
-    // 3. Quitar paréntesis (1), (2), etc.
+    if (nk) {
+        const escapedNk = nk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // Solo quitar si está al final o precedido por espacio
+        const regex = new RegExp(`\\s*${escapedNk}\\s*$|\\s+${escapedNk}\\s+`, 'gi');
+        base = base.replace(regex, ' ').trim();
+    }
+
+    // Quitar paréntesis técnicos
     base = base.replace(/\s*\([^)]*\)/g, '').trim();
-    
     return normalizeSpaces(base);
 }
 
@@ -73,12 +67,9 @@ export function showNotification(title, message, type = 'info') {
 export function validateAndFixCmykValue(value) {
     const str = String(value).trim();
     if (str === '') return 0;
-    
-    // El usuario requiere ENTEROS 0-100
     let intNum = parseInt(str, 10);
     if (isNaN(intNum)) intNum = 0;
     if (intNum > 100) intNum = 100;
     if (intNum < 0) intNum = 0;
-    
-    return intNum; // Retornar entero puro
+    return intNum;
 }

@@ -666,6 +666,31 @@ export class LinearizationValidatorView {
             });
         });
 
+        // ============================================================
+        // 5. MODA CMYK (Regla 73 - Mayoría Estadística)
+        // ============================================================
+        Object.keys(eqGroupsInFile).forEach(key => {
+            const groupRecords = eqGroupsInFile[key];
+            if (groupRecords.length <= 1) return;
+
+            const cmykCounts = {};
+            groupRecords.forEach(r => {
+                const cmykKey = r.cmyk.map(v => Number(v).toFixed(6)).join('|');
+                cmykCounts[cmykKey] = (cmykCounts[cmykKey] || 0) + 1;
+            });
+
+            const sortedCounts = Object.entries(cmykCounts).sort((a, b) => b[1] - a[1]);
+            const dominantCmykKey = sortedCounts[0][0];
+            
+            groupRecords.forEach(r => {
+                const currentKey = r.cmyk.map(v => Number(v).toFixed(6)).join('|');
+                if (currentKey !== dominantCmykKey) {
+                    r.isNameInconsistent = true;
+                    r.hasError = true;
+                }
+            });
+        });
+
         // 5. BLOQUEO DE COMPARACIÓN si hay errores
         const hasAnyFileError = this.records.some(r => r.hasError) || (this.masterRecords && this.masterRecords.some(r => r.hasError));
         const runBtn = this.container.querySelector('#btnRunCyclic');
@@ -751,7 +776,25 @@ export class LinearizationValidatorView {
                 ${counts.nk > 0 ? `<div class="stat-badge-mini blue has-count ${this.activeFilter === 'nk' ? 'active' : ''}" data-filter="nk"><i class="fas fa-fingerprint"></i> Sin NK (${counts.nk})</div>` : ''}
                 ${counts.parentheses > 0 ? `<div class="stat-badge-mini orange has-count ${this.activeFilter === 'parentheses' ? 'active' : ''}" data-filter="parentheses"><i class="fas fa-brackets-curly"></i> Paréntesis (${counts.parentheses})</div>` : ''}
                 ${errorCount === 0 && this.records.length > 0 ? '<div class="stat-badge-mini" style="background: rgba(16, 185, 129, 0.2); border: 2px solid #10b981; color: #10b981; box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);"><i class="fas fa-check-circle"></i> TODO CORRECTO</div>' : ''}
+                ${counts.nameInconsistent > 0 ? `
+                    <button id="btnAutoFixMajority" class="stat-badge-mini" style="background: #7c3aed; border: 2px solid #9f67ff; color: white; cursor: pointer; animation: pulse-purple 2s infinite;">
+                        <i class="fas fa-magic"></i> AUTO-CORREGIR POR MAYORÍA (${counts.nameInconsistent})
+                    </button>
+                ` : ''}
             `;
+
+            // Vincular evento de autocorrección masiva
+            const btnAutoFix = statsBadges.querySelector('#btnAutoFixMajority');
+            if (btnAutoFix) {
+                btnAutoFix.onclick = async () => {
+                    if (confirm(`Se aplicará el valor CMYK de la mayoría a los ${counts.nameInconsistent} registros inconsistentes. ¿Deseas continuar?`)) {
+                        // Re-ejecutar lógica de moda pero esta vez aplicando los cambios
+                        this.applyMajorityFixes();
+                        await this.performValidation();
+                        window.showNotification('Sincronizado', 'Se ha aplicado la moda CMYK a todos los grupos.', 'success');
+                    }
+                };
+            }
 
             // Vincular eventos de filtrado
             statsBadges.querySelectorAll('.stat-badge-mini').forEach(badge => {
@@ -869,6 +912,9 @@ export class LinearizationValidatorView {
                     rowColorClass = 'row-error-red';
                 } else if (record.isInvalidName) { 
                     statusHtml = '<div class="status-badge-solid orange"><i class="fas fa-book-dead"></i> Catálogo</div>';
+                    rowColorClass = 'row-error-orange';
+                } else if (record.isNameInconsistent) { 
+                    statusHtml = '<div class="status-badge-solid orange" style="background: #7c3aed; border-color: #9f67ff;"><i class="fas fa-sync-alt"></i> Inconsistente</div>';
                     rowColorClass = 'row-error-orange';
                 } else if (record.isMissingNk) { 
                     statusHtml = '<div class="status-badge-solid blue"><i class="fas fa-fingerprint"></i> Sin NK</div>'; 
@@ -1173,6 +1219,47 @@ export class LinearizationValidatorView {
         } catch (error) {
             console.error('❌ Error crítico en el protocolo de sanitización:', error);
         }
+    }
+
+    /**
+     * Aplica la regla de la Moda (Mayoría) a todos los grupos de inconsistencia
+     */
+    applyMajorityFixes() {
+        const eqMap = window.EQUIVALENCE_MAP || new Map();
+        const groups = {};
+
+        // 1. Agrupar registros por NK + GroupID
+        this.records.forEach(r => {
+            const pureBaseName = (r.baseName || '').trim().toUpperCase();
+            const eqData = eqMap.get(pureBaseName.replace(/[^A-Z0-9]/gi, ''));
+            if (eqData) {
+                const nk = (r.nk || '').trim().toUpperCase();
+                const key = `${nk}|${eqData.groupId}`;
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(r);
+            }
+        });
+
+        // 2. Para cada grupo, encontrar la moda y aplicar
+        Object.keys(groups).forEach(key => {
+            const list = groups[key];
+            if (list.length <= 1) return;
+
+            const cmykCounts = {};
+            list.forEach(r => {
+                const cKey = r.cmyk.map(v => Number(v).toFixed(6)).join('|');
+                cmykCounts[cKey] = (cmykCounts[cKey] || 0) + 1;
+            });
+
+            const sorted = Object.entries(cmykCounts).sort((a, b) => b[1] - a[1]);
+            const dominantKey = sorted[0][0];
+            const dominantCmyk = dominantKey.split('|').map(v => parseFloat(v));
+
+            list.forEach(r => {
+                r.cmyk = [...dominantCmyk];
+                r.isNameInconsistent = false;
+            });
+        });
     }
 
     async exportCorrectedFile() {

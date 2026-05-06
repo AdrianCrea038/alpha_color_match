@@ -125,7 +125,7 @@ export function parseTxtContent(content, keepDuplicates = false) {
             records.push({
                 id: id,
                 _uid: `file_${tempId}`,
-                name: normalizedName,
+                name: baseName, // <--- CAMBIO CRÍTICO: Usar siempre baseName
                 baseName: baseName,
                 nk: nk,
                 cmyk: cmyk.map(v => isStrictNumber(String(v)) ? parseFloat(v) : NaN),
