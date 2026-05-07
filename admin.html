@@ -11,63 +11,63 @@
 </head>
 <body>
     <div class="admin-container">
-        <div class="admin-header">
-            <h1><i class="fas fa-cog"></i> Administración de Usuarios</h1>
+        <header class="admin-header">
+            <h1><i class="fas fa-user-shield"></i> Seguridad Master</h1>
             <div class="user-info">
                 <span id="currentUserDisplay"></span>
-                <button id="backBtn" class="back-btn"><i class="fas fa-arrow-left"></i> Volver</button>
-                <button id="logoutBtn" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Cerrar sesión</button>
+                <button id="backBtn" class="back-btn"><i class="fas fa-chevron-left"></i> Panel Principal</button>
+                <button id="logoutBtn" class="logout-btn"><i class="fas fa-power-off"></i></button>
             </div>
-        </div>
+        </header>
 
-        <div class="admin-section" style="background: transparent; padding: 0; border: none;">
-            <div class="catalog-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 1.5rem; margin-top: 2rem;">
-                <div class="premium-card" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 16px; overflow: hidden; grid-column: 1 / -1;">
-                    <div class="card-header" style="border-bottom: 1px solid rgba(255,255,255,0.05); padding: 1.5rem; display: flex; align-items: center; justify-content: space-between; background: rgba(59, 130, 246, 0.05);">
-                        <div style="display: flex; align-items: center; gap: 15px;">
-                            <div style="width: 45px; height: 45px; background: rgba(59, 130, 246, 0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #3b82f6;">
-                                <i class="fas fa-users" style="font-size: 1.4rem;"></i>
-                            </div>
-                            <div>
-                                <h3 style="margin: 0; font-size: 1.2rem; color: #fff;">Gestión de Usuarios</h3>
-                                <span style="font-size: 0.8rem; color: #3b82f6; font-weight: 600;">SEGURIDAD Y PERMISOS</span>
-                            </div>
+        <main class="admin-main">
+            <div class="premium-card">
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; background: rgba(59, 130, 246, 0.03);">
+                    <div style="display: flex; align-items: center; gap: 20px;">
+                        <div style="width: 50px; height: 50px; background: rgba(59, 130, 246, 0.1); border-radius: 14px; display: flex; align-items: center; justify-content: center; color: #3b82f6; box-shadow: 0 8px 16px rgba(59, 130, 246, 0.2);">
+                            <i class="fas fa-users-gear" style="font-size: 1.5rem;"></i>
                         </div>
-                        <div style="display: flex; gap: 12px;">
-                            <button id="migrateMasterBtn" style="display:none; align-items:center; gap:8px; background:linear-gradient(135deg,#7c3aed,#4c1d95); border:none; color:white; padding:10px 20px; border-radius:8px; cursor:pointer; font-weight:700; font-size:0.85rem; box-shadow: 0 4px 15px rgba(124, 58, 237, 0.3);">
-                                <i class="fas fa-layer-group"></i> JERARQUÍA MASTER
-                            </button>
-                            <button id="addUserBtn" class="premium-btn" style="background: #3b82f6; color: white; border: none; padding: 10px 25px; border-radius: 8px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                                <i class="fas fa-plus"></i> CREAR USUARIO
+                        <div>
+                            <h2 style="margin: 0; font-size: 1.4rem; letter-spacing: -0.5px;">Control de Operadores</h2>
+                            <p style="font-size: 0.8rem; color: #94a3b8; margin: 4px 0 0 0; font-weight: 500; text-transform: uppercase; letter-spacing: 1px;">Gestión de privilegios y accesos</p>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 12px;">
+                        <button id="migrateMasterBtn" style="display:none; align-items:center; gap:10px; background:linear-gradient(135deg,#6366f1,#4f46e5); border:none; color:white; padding:12px 24px; border-radius:14px; cursor:pointer; font-weight:700; font-size:0.85rem; box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.3); transition: all 0.3s;">
+                            <i class="fas fa-crown"></i> ESTABLECER JERARQUÍA
+                        </button>
+                        <button id="addUserBtn" style="background: #3b82f6; color: white; border: none; padding: 12px 28px; border-radius: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 10px; box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3); transition: all 0.3s;">
+                            <i class="fas fa-plus"></i> NUEVO USUARIO
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card-body" style="padding: 2rem;">
+                    <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                        <div id="adminExportTools" style="display:flex; gap:12px; align-items:center;">
+                            <span style="color:#64748b; font-size:0.75rem; font-weight:800; text-transform: uppercase; letter-spacing: 1px;">Backup de Seguridad:</span>
+                            <button onclick="window.downloadTable('usuarios')" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); color:#94a3b8; font-size:0.75rem; padding:8px 16px; border-radius:10px; cursor:pointer; transition: all 0.2s;">
+                                <i class="fas fa-file-export"></i> Descargar JSON
                             </button>
                         </div>
                     </div>
-                    <div class="card-body" style="padding: 1.5rem;">
-                        <div id="adminExportTools" style="display:flex; gap:12px; margin-bottom: 1.5rem; background:rgba(30,41,59,0.5); padding:1rem; border-radius:12px; border:1px solid rgba(255,255,255,0.05); align-items:center;">
-                            <div style="color:#94a3b8; font-size:0.8rem; font-weight:900;">
-                                <i class="fas fa-database" style="margin-right:8px; color:#3b82f6;"></i> RESPALDO JSON:
-                            </div>
-                            <button class="btn-secondary" onclick="window.downloadTable('usuarios')" style="background:rgba(255,255,255,0.05); border:1px solid #475569; color:#94a3b8; font-size:0.75rem; padding:6px 12px; border-radius:6px; cursor:pointer;">
-                                <i class="fas fa-download"></i> USUARIOS
-                            </button>
-                        </div>
-                        <div class="admin-table-wrapper" style="background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); overflow: hidden;">
-                            <table class="admin-table" style="width: 100%; border-collapse: collapse;">
-                                <thead style="background: rgba(59, 130, 246, 0.1); color: #3b82f6; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;">
-                                    <tr>
-                                        <th style="padding: 15px; text-align: left;">Usuario</th>
-                                        <th style="padding: 15px; text-align: left;">Contraseña</th>
-                                        <th style="padding: 15px; text-align: left;">Permisos</th>
-                                        <th style="padding: 15px; text-align: center;">Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="adminTableBody"></tbody>
-                            </table>
-                        </div>
+
+                    <div class="admin-table-wrapper">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Identidad del Usuario</th>
+                                    <th>Credenciales</th>
+                                    <th>Nivel de Acceso</th>
+                                    <th style="text-align: right;">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminTableBody"></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
-        </div>
+        </main>
     </div>
 
     <script type="module">
@@ -96,21 +96,52 @@
             const users = await auth.getAllUsers();
             
             if (users.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="4" class="empty-state">No hay usuarios registrados<\/td><\/tr>';
+                tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:4rem; color:#64748b;">No hay usuarios registrados</td></tr>';
                 return;
             }
             
             tableBody.innerHTML = users.map(user => {
                 const isCurrentUser = user.id === currentUser.id;
                 const permissionBadges = renderPermissionBadges(user);
-                     return `
+                      return `
                     <tr data-id="${user.id}">
-                        <td><strong>${escapeHtml(user.username)}</strong>${user.is_master ? ' <span class="permission-badge master">👑 MASTER</span>' : ''}${isCurrentUser ? ' <span class="permission-badge allowed">(tú)</span>' : ''}</td>
-                        <td><input type="password" class="password-placeholder" value="********" disabled style="background:transparent; border:none; color:#9ca3af; width:100px;"><button class="admin-btn show-password" data-username="${escapeHtml(user.username)}" data-password="${user.password || ''}" style="font-size:0.7rem;"><i class="fas fa-eye"></i></button></td>
-                        <td class="user-permissions">${permissionBadges}</td>
-                        <td class="admin-actions-cell">
-                            <button class="admin-btn edit-user" data-id="${user.id}" data-username="${escapeHtml(user.username)}" data-permissions='${JSON.stringify(user.permisos || [])}' data-ismaster="${user.is_master}" data-password="${user.password || ''}"><i class="fas fa-edit"></i></button>
-                            ${!user.is_master ? `<button class="admin-btn delete delete-user" data-id="${user.id}" data-username="${escapeHtml(user.username)}"><i class="fas fa-trash"></i></button>` : ''}
+                        <td>
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <div style="width:38px; height:38px; border-radius:50%; background:${user.is_master ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'rgba(255,255,255,0.05)'}; display:flex; align-items:center; justify-content:center; color:white; font-weight:800; font-size:0.9rem; border:2px solid rgba(255,255,255,0.05);">
+                                    ${user.username.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                    <div style="font-weight:700; color:#fff; font-size:0.95rem;">${escapeHtml(user.username)}</div>
+                                    <div style="font-size:0.7rem; color:#64748b; margin-top:2px;">UID: ${user.id}</div>
+                                </div>
+                                ${user.is_master ? ' <span class="permission-badge master" style="margin-left:5px;">👑 MASTER</span>' : ''}
+                                ${isCurrentUser ? ' <span style="font-size:0.65rem; color:#3b82f6; font-weight:bold; background:rgba(59,130,246,0.1); padding:2px 6px; border-radius:4px;">(SESIÓN ACTUAL)</span>' : ''}
+                            </div>
+                        </td>
+                        <td>
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                <input type="password" class="password-placeholder" value="********" disabled style="background:transparent; border:none; color:#475569; width:70px; font-size:0.9rem; letter-spacing:2px;">
+                                <button class="admin-btn show-password" data-username="${escapeHtml(user.username)}" data-password="${user.password || ''}" style="width:32px; height:32px; font-size:0.8rem; border-radius:8px;">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                        </td>
+                        <td class="user-permissions">
+                            <div style="display:flex; flex-wrap:wrap; gap:4px; max-width:400px;">
+                                ${permissionBadges}
+                            </div>
+                        </td>
+                        <td style="text-align: right;">
+                            <div style="display:flex; gap:8px; justify-content:flex-end;">
+                                <button class="admin-btn edit-user" data-id="${user.id}" data-username="${escapeHtml(user.username)}" data-permissions='${JSON.stringify(user.permisos || [])}' data-ismaster="${user.is_master}" data-password="${user.password || ''}">
+                                    <i class="fas fa-pen-to-square"></i>
+                                </button>
+                                ${!user.is_master ? `
+                                    <button class="admin-btn delete delete-user" data-id="${user.id}" data-username="${escapeHtml(user.username)}">
+                                        <i class="fas fa-trash-can"></i>
+                                    </button>
+                                ` : ''}
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -145,94 +176,103 @@
         
         function renderPermissionBadges(user) {
             if (user.is_master) {
-                return '<span class="permission-badge master" style="background:linear-gradient(135deg,#f59e0b,#d97706); color:white; padding:4px 10px; border-radius:6px; font-size:0.7rem; font-weight:bold;"><i class="fas fa-star"></i> ACCESO TOTAL</span>';
+                return '<span class="permission-badge master" style="background:linear-gradient(135deg,rgba(245,158,11,0.1),rgba(245,158,11,0.05)); border:1px solid rgba(245,158,11,0.2); color:#f59e0b;"><i class="fas fa-crown"></i> PRIVILEGIOS TOTALES</span>';
             }
             
             const permissionNames = {
-                comparator: 'Comparar',
+                cyclicHub: 'Auditoría Cíclica',
+                comparator: 'Auditoría Directa',
                 history: 'Bandeja',
                 paletteValidator: 'Validar Paleta',
-                development: 'Desarrollo',
                 assignment: 'Asignación',
                 reports: 'Reportes',
                 admin: 'Admin',
                 editCatalog: 'Editar Catálogo',
-                dashboard: 'Dashboard',
-                backup: 'Backup',
-                linearization: 'Linealización'
+                dashboard: 'Dashboard'
             };
             
             const badges = (user.permisos || [])
                 .filter(p => permissionNames[p])
-                .map(perm => `<span class="permission-badge" style="background:rgba(59,130,246,0.15); color:#3b82f6; border:1px solid rgba(59,130,246,0.3); padding:3px 8px; border-radius:5px; font-size:0.65rem; font-weight:600; margin-right:4px; margin-bottom:4px; display:inline-block;">${permissionNames[perm]}</span>`);
+                .map(perm => `<span class="permission-badge">${permissionNames[perm]}</span>`);
             
-            return badges.length > 0 ? badges.join('') : '<span style="color:#64748b; font-size:0.75rem; font-style:italic;">Sin permisos</span>';
+            return badges.length > 0 ? badges.join('') : '<span style="color:#475569; font-size:0.75rem; font-style:italic;">Acceso Restringido</span>';
         }
         
         function showUserModal(userToEdit = null) {
             const isEditing = !!userToEdit;
-            // Quitamos la restricción isEditingMaster para que el MASTER pueda editar todo
+            const isMaster = userToEdit?.isMaster;
             
             const modal = document.createElement('div');
             modal.className = 'modal-overlay';
             modal.innerHTML = `
-                <div class="modal-content" style="background:#0f172a; border:2px solid ${userToEdit?.isMaster ? '#f59e0b' : '#3b82f6'}; border-radius:20px; padding:0; width:95%; max-width:550px; overflow:hidden; box-shadow:0 25px 50px -12px rgba(0,0,0,0.8);">
-                    <div class="modal-header" style="background: ${userToEdit?.isMaster ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#3b82f6,#1d4ed8)'}; padding:1.5rem; display:flex; justify-content:space-between; align-items:center;">
-                        <h3 style="color: white; margin:0; font-size:1.3rem; display:flex; align-items:center; gap:10px;">
-                            ${isEditing ? (userToEdit?.isMaster ? '<i class="fas fa-crown"></i> Perfil MASTER' : '<i class="fas fa-user-edit"></i> Editar Usuario') : '<i class="fas fa-user-plus"></i> Nuevo Usuario'}
-                        </h3>
-                        <button class="modal-close" style="background:transparent; border:none; color: white; font-size:1.5rem; cursor:pointer;">&times;</button>
+                <div class="modal-content" style="width:95%; max-width:600px;">
+                    <div class="modal-header" style="background: ${isMaster ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#3b82f6,#1d4ed8)'}; padding:2rem; display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <h3 style="color: white; margin:0; font-size:1.5rem; font-weight:900; letter-spacing:-0.5px; display:flex; align-items:center; gap:12px;">
+                                ${isEditing ? (isMaster ? '<i class="fas fa-crown"></i> PERFIL MASTER' : '<i class="fas fa-user-gear"></i> EDITAR OPERADOR') : '<i class="fas fa-user-plus"></i> NUEVO OPERADOR'}
+                            </h3>
+                            <p style="color:rgba(255,255,255,0.7); font-size:0.8rem; margin:5px 0 0 0; font-weight:500;">Configuración de identidad y permisos de sistema</p>
+                        </div>
+                        <button class="modal-close" style="background:rgba(255,255,255,0.1); border:none; color: white; width:36px; height:36px; border-radius:50%; font-size:1.2rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s;">&times;</button>
                     </div>
                     
-                    <div class="modal-body" style="padding:2rem;">
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem;">
+                    <div class="modal-body" style="padding:2.5rem;">
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:2rem; margin-bottom:2.5rem;">
                             <div class="form-group">
-                                <label style="display:block; color:#94a3b8; font-size:0.75rem; font-weight:bold; margin-bottom:8px; text-transform:uppercase;">Nombre de Usuario</label>
-                                <input type="text" id="modalUsername" value="${userToEdit ? escapeHtml(userToEdit.username) : ''}" ${isEditing ? 'disabled' : ''} 
-                                       style="width:100%; background:#1e293b; border:1px solid #334155; color:white; padding:12px; border-radius:10px; font-weight:bold; box-sizing:border-box; ${isEditing ? 'opacity:0.6;' : ''}">
+                                <label style="display:block; color:#64748b; font-size:0.7rem; font-weight:800; margin-bottom:10px; text-transform:uppercase; letter-spacing:1px;">Nombre de Usuario</label>
+                                <div style="position:relative;">
+                                    <i class="fas fa-user" style="position:absolute; left:15px; top:15px; color:#3b82f6; font-size:0.9rem;"></i>
+                                    <input type="text" id="modalUsername" value="${userToEdit ? escapeHtml(userToEdit.username) : ''}" ${isEditing ? 'disabled' : ''} 
+                                           style="width:100%; background:rgba(15,23,42,0.4); border:1px solid rgba(255,255,255,0.08); color:white; padding:14px 14px 14px 45px; border-radius:14px; font-weight:700; box-sizing:border-box; ${isEditing ? 'opacity:0.6;' : ''}">
+                                </div>
                             </div>
                             
                             <div class="form-group">
-                                <label style="display:block; color:#94a3b8; font-size:0.75rem; font-weight:bold; margin-bottom:8px; text-transform:uppercase;">Contraseña</label>
+                                <label style="display:block; color:#64748b; font-size:0.7rem; font-weight:800; margin-bottom:10px; text-transform:uppercase; letter-spacing:1px;">Contraseña Segura</label>
                                 <div style="position:relative;">
-                                    <input type="password" id="modalPassword" value="${userToEdit?.password || ''}" placeholder="${isEditing ? 'En blanco = mantener' : ''}"
-                                           style="width:100%; background:#1e293b; border:1px solid #334155; color:white; padding:12px; padding-right:45px; border-radius:10px; box-sizing:border-box;">
-                                    <i class="fas fa-eye-slash toggle-password" style="position:absolute; right:15px; top:14px; color:#64748b; cursor:pointer; font-size:1.1rem;"></i>
+                                    <i class="fas fa-lock" style="position:absolute; left:15px; top:15px; color:#3b82f6; font-size:0.9rem;"></i>
+                                    <input type="password" id="modalPassword" value="${userToEdit?.password || ''}" placeholder="${isEditing ? '••••••••' : 'Mínimo 6 caracteres'}"
+                                           style="width:100%; background:rgba(15,23,42,0.4); border:1px solid rgba(255,255,255,0.08); color:white; padding:14px 45px 14px 45px; border-radius:14px; box-sizing:border-box;">
+                                    <i class="fas fa-eye-slash toggle-password" style="position:absolute; right:15px; top:15px; color:#475569; cursor:pointer; font-size:1.1rem; transition:0.2s;"></i>
                                 </div>
                             </div>
                         </div>
 
                         <div style="margin-top:2rem;">
-                            <h4 style="color:#3b82f6; font-size:0.85rem; font-weight:900; margin-bottom:1rem; display:flex; align-items:center; gap:8px;">
-                                <i class="fas fa-key"></i> PERMISOS DE ACCESO AL SISTEMA
-                            </h4>
-                            <div class="permissions-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; background:rgba(30,41,59,0.5); padding:1.5rem; border-radius:15px; border:1px solid rgba(255,255,255,0.05);">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; padding-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.05);">
+                                <h4 style="color:#3b82f6; font-size:0.8rem; font-weight:900; margin:0; display:flex; align-items:center; gap:10px; text-transform:uppercase; letter-spacing:1px;">
+                                    <i class="fas fa-shield-halved"></i> Módulos Autorizados
+                                </h4>
+                                <span style="font-size:0.7rem; color:#64748b; font-weight:600;">Seleccione los accesos permitidos</span>
+                            </div>
+                            <div class="permissions-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; background:rgba(15,23,42,0.2); padding:1.5rem; border-radius:20px; border:1px solid rgba(255,255,255,0.03);">
                                 ${[
-                                    {v:'comparator', l:'Comparar Archivos'},
-                                    {v:'history', l:'Bandeja de Entrada'},
-                                    {v:'paletteValidator', l:'Validar Paletas'},
-                                    {v:'development', l:'Sección Desarrollo'},
-                                    {v:'assignment', l:'Asignación Órdenes'},
-                                    {v:'reports', l:'Reportes de Prod.'},
-                                    {v:'dashboard', l:'Dashboard General'},
-                                    {v:'backup', l:'Gestión de Backups'},
-                                    {v:'admin', l:'Panel Administrador'},
-                                    {v:'editCatalog', l:'Editar Catálogos'},
-                                    {v:'linearization', l:'Linealización'}
+                                    {v:'cyclicHub', l:'Auditoría Cíclica', i:'fa-sync'},
+                                    {v:'comparator', l:'Auditoría Directa', i:'fa-shield-check'},
+                                    {v:'history', l:'Bandeja de Entrada', i:'fa-inbox'},
+                                    {v:'paletteValidator', l:'Validar Paletas', i:'fa-palette'},
+                                    {v:'assignment', l:'Asignación Órdenes', i:'fa-tasks'},
+                                    {v:'reports', l:'Reportes de Prod.', i:'fa-chart-line'},
+                                    {v:'dashboard', l:'Dashboard General', i:'fa-gauge-high'},
+                                    {v:'editCatalog', l:'Editar Catálogos', i:'fa-database'},
+                                    {v:'admin', l:'Panel Administrador', i:'fa-user-lock'}
                                 ].map(p => `
-                                    <label style="display:flex; align-items:center; gap:10px; color:#e2e8f0; font-size:0.85rem; cursor:pointer; padding:5px; border-radius:5px; transition:all 0.2s;">
+                                    <label style="display:flex; align-items:center; gap:12px; color:#cbd5e1; font-size:0.85rem; cursor:pointer; padding:10px 15px; border-radius:12px; transition:all 0.2s; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.02);">
                                         <input type="checkbox" value="${p.v}" ${userToEdit?.permissions?.includes(p.v) ? 'checked' : ''} 
                                                style="width:18px; height:18px; accent-color:#3b82f6; cursor:pointer;">
-                                        ${p.l}
+                                        <i class="fas ${p.i}" style="width:20px; text-align:center; color:#64748b; font-size:0.8rem;"></i>
+                                        <span style="font-weight:500;">${p.l}</span>
                                     </label>
                                 `).join('')}
                             </div>
                         </div>
                     </div>
                     
-                    <div class="modal-footer" style="padding:1.5rem 2rem; background:rgba(30,41,59,0.3); display:flex; gap:1rem; justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.05);">
-                        <button class="btn-secondary cancel-modal" style="background:transparent; border:1px solid #475569; color:#94a3b8; padding:10px 25px; border-radius:10px; cursor:pointer; font-weight:bold;">Cancelar</button>
-                        <button class="btn-primary confirm-modal" style="background:${userToEdit?.isMaster ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#3b82f6,#1d4ed8)'}; border:none; padding:10px 30px; border-radius:10px; cursor:pointer; color:white; font-weight:bold; box-shadow:0 10px 15px -3px rgba(0,0,0,0.3);">${isEditing ? 'Guardar Cambios' : 'Crear Usuario'}</button>
+                    <div class="modal-footer" style="padding:2rem 2.5rem; background:rgba(15,23,42,0.4); display:flex; gap:1.5rem; justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.05);">
+                        <button class="cancel-modal" style="background:transparent; border:1.5px solid rgba(255,255,255,0.1); color:#94a3b8; padding:14px 30px; border-radius:14px; cursor:pointer; font-weight:700; transition:0.2s;">Cerrar Ventana</button>
+                        <button class="confirm-modal" style="background:${isMaster ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#3b82f6,#1d4ed8)'}; border:none; padding:14px 40px; border-radius:14px; cursor:pointer; color:white; font-weight:800; box-shadow:0 10px 20px rgba(59, 130, 246, 0.3); transition:all 0.3s;">
+                            ${isEditing ? 'ACTUALIZAR DATOS' : 'CREAR OPERADOR'}
+                        </button>
                     </div>
                 </div>
             `;            
@@ -252,6 +292,7 @@
                     passwordInput.setAttribute('type', type);
                     togglePassword.classList.toggle('fa-eye');
                     togglePassword.classList.toggle('fa-eye-slash');
+                    togglePassword.style.color = type === 'text' ? '#3b82f6' : '#475569';
                 };
             }
             
@@ -277,18 +318,13 @@
                     return;
                 }
                 
-                if (!isEditing && password.length < 6) {
-                    alert('⚠️ La contraseña debe tener al menos 6 caracteres.');
-                    return;
-                }
-                
                 if (isEditing && password === '********') {
                     password = null;
                 }
                 
                 const confirmBtn = modal.querySelector('.confirm-modal');
                 const originalText = confirmBtn.innerHTML;
-                confirmBtn.innerHTML = '⏳ Procesando...';
+                confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> PROCESANDO...';
                 confirmBtn.disabled = true;
                 
                 try {
@@ -300,20 +336,14 @@
                         
                         const result = await auth.updateUser(userToEdit.id, updates);
                         if (result.success) {
-                            alert(`✅ Usuario "${username}" actualizado correctamente.`);
                             closeModal();
                             await renderUsers();
-                            if (currentUser.id === userToEdit.id && password) {
-                                alert('⚠️ Tu contraseña ha sido cambiada. Por favor inicia sesión nuevamente.');
-                                auth.logout();
-                            }
                         } else {
                             alert(`❌ Error: ${result.error}`);
                         }
                     } else {
                         const result = await auth.createUser(username, password, permissions, isMaster);
                         if (result.success) {
-                            alert(`✅ Usuario "${username}" creado correctamente.\n🔑 Contraseña: ${password}`);
                             closeModal();
                             await renderUsers();
                         } else {
@@ -337,7 +367,6 @@
             try {
                 const result = await auth.deleteUser(id);
                 if (result.success) {
-                    alert(`✅ Usuario "${username}" eliminado.`);
                     await renderUsers();
                 } else {
                     alert(`❌ Error: ${result.error}`);
@@ -359,7 +388,6 @@
             window.location.href = 'login.html';
         };
 
-        // FUNCIÓN GLOBAL DE DESCARGA
         window.downloadTable = async (tableName) => {
             const { supabase } = await import('./js/core/supabaseClient.js');
             try {
@@ -374,13 +402,11 @@
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-                alert(`✅ Tabla "${tableName}" descargada correctamente.`);
             } catch (err) {
                 alert('❌ Error al descargar: ' + err.message);
             }
         };
 
-        // Botón de migración MASTER → COMPLETO (solo visible para el MASTER real)
         const migrateBtn = document.getElementById('migrateMasterBtn');
         if (currentUser.isMaster) {
             migrateBtn.style.display = 'inline-flex';
@@ -400,24 +426,29 @@
                 migrateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
                 migrateBtn.disabled = true;
 
-                let ok = 0, fail = 0;
+                let ok = 0;
                 for (const user of otherMasters) {
                     const { error } = await supabase
                         .from('usuarios')
                         .update({ is_master: false, permisos: ALL_PERMISSIONS })
                         .eq('id', user.id);
-                    if (error) { console.error('Error:', user.username, error); fail++; }
-                    else ok++;
+                    if (!error) ok++;
                 }
 
-                migrateBtn.innerHTML = '<i class="fas fa-layer-group"></i> Establecer Jerarquía MASTER/COMPLETO';
+                migrateBtn.innerHTML = '<i class="fas fa-crown"></i> ESTABLECER JERARQUÍA';
                 migrateBtn.disabled = false;
 
                 if (ok > 0) {
-                    alert(`✅ ${ok} usuario(s) convertidos a COMPLETO correctamente.${fail > 0 ? `\n⚠️ ${fail} fallaron, revisa la consola.` : ''}`);
                     await renderUsers();
-                } else {
-                    alert('❌ No se completó la migración. Revisa la consola.');
+                }
+            };
+        }
+        
+        renderUsers();
+    </script>
+</body>
+</html>
+onsola.');
                 }
             };
         }

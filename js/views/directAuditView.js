@@ -134,6 +134,7 @@ export class DirectAuditView {
             // REGLA: Ignorar todo lo que contenga "WHITE"
             if (fullName.includes('WHITE') || baseName.includes('WHITE')) {
                 r.isValidName = true;
+                r.isMissingInCatalog = false;
                 r.isValidNk = true;
                 r.hasNumberedParentheses = false;
                 r.isDuplicate = false;
@@ -145,9 +146,16 @@ export class DirectAuditView {
             const isTonal = baseName.startsWith('TONAL') || baseName.startsWith('TNL') || baseName.startsWith('TN');
             r.isTonal = isTonal;
             
-            // VALIDACIÓN UNIFICADA: Válido si está el nombre completo O el nombre base en catálogo
-            const isValidName = (window.isValidColorName?.(fullName) || window.isValidColorName?.(baseName));
-            r.isValidName = !!isValidName;
+            // VALIDACIÓN UNIFICADA: 
+            const existsInCatalog = (window.isValidColorName?.(fullName) || window.isValidColorName?.(baseName));
+            
+            // Un nombre está "Mal Escrito" si tiene ruido técnico excesivo 
+            // Permitimos letras, números, espacios, puntos, guiones y slashes (comunes en colores)
+            const hasNoise = /[^A-Z0-9\s\.\-\/]/.test(baseName); 
+            
+            r.isValidName = existsInCatalog || isTonal;
+            r.isMissingInCatalog = !r.isValidName && !hasNoise;
+            r.isMisspelled = !r.isValidName && hasNoise;
 
             r.hasParentheses = /\(|\)/.test(r.name);
             r.hasNumberedParentheses = /\(\d+\)/.test(r.name);
@@ -160,7 +168,6 @@ export class DirectAuditView {
         const colorGroups = new Map();
         this.records.forEach(r => {
             const cleanNk = (r.nk || '').trim().toUpperCase();
-            // Extraer solo la palabra del color (ej: "BLACK", "DARK STEEL GREY") ignorando códigos tipo "00A"
             const fullName = (r.baseName || r.name).trim().toUpperCase();
             const colorNameOnly = fullName.replace(/^[0-9][0-9][A-Z]\s+/, '').replace(/^TM\s+/, '').trim();
             
@@ -171,42 +178,35 @@ export class DirectAuditView {
 
         for (const r of this.records) {
             const cleanNk = (r.nk || '').trim().toUpperCase();
-            const fullName = (r.baseName || r.name).trim().toUpperCase();
-            const colorNameOnly = fullName.replace(/^[0-9][0-9][A-Z]\s+/, '').replace(/^TM\s+/, '').trim();
-            const groupKey = `${colorNameOnly}|${cleanNk}`;
-            
-            // Duplicados: Requiere mismo baseName + mismo NK (no solo nombre)
             const baseNameForDup = (r.baseName || '').trim().toUpperCase();
+            
             r.isDuplicate = this.records.filter(x =>
                 (x.baseName || '').trim().toUpperCase() === baseNameForDup &&
                 (x.nk || '').trim().toUpperCase() === cleanNk &&
-                baseNameForDup !== '' // No marcar como dup si baseName está vacío
+                baseNameForDup !== '' 
             ).length > 1;
 
-            // Inconsistencia de CMYK: Basada en el Nombre Real del Color + NK
             r.isCmykInconsistent = false;
+            const fullName = (r.baseName || r.name).trim().toUpperCase();
+            const colorNameOnly = fullName.replace(/^[0-9][0-9][A-Z]\s+/, '').replace(/^TM\s+/, '').trim();
+            const groupKey = `${colorNameOnly}|${cleanNk}`;
             const group = colorGroups.get(groupKey);
             if (group && group.length > 1) {
                 const modaKey = this._getModaCmyk(group);
                 const currentKey = (r.cmyk || [0,0,0,0]).map(v => Number(v).toFixed(4)).join('|');
-                
-                if (modaKey === null) {
-                    r.isCmykInconsistent = true;
-                } else {
-                    r.isCmykInconsistent = (currentKey !== modaKey);
-                }
+                r.isCmykInconsistent = (modaKey === null) ? true : (currentKey !== modaKey);
             }
-            // b. Detección de Paréntesis con Números (ej: (1))
+
             const parenMatch = (r.name || '').match(/\([^)]*\)/);
             r.hasNumberedParentheses = !!parenMatch;
             r.parenthesisEvidence = parenMatch ? parenMatch[0] : '';
             r.cleanNameForDisplay = (r.name || '').replace(/\([^)]*\)/g, '').trim();
 
-            // 3. ESTADO GLOBAL DE ERROR
-            const baseError = !r.isValidName || !r.isValidNk || r.isMissingNk || r.isDuplicate || r.isCorrupted || r.hasNumberedParentheses || r.isCmykInconsistent;
+            // 3. ESTADO GLOBAL DE ERROR (Solo errores ROJOS bloquean la exportación)
+            // Falta en Catálogo (Blue) NO bloquea si el usuario decide exportar, o tal vez sí según la regla
+            const baseError = r.isMisspelled || !r.isValidNk || r.isMissingNk || r.isDuplicate || r.isCorrupted || r.hasNumberedParentheses || r.isCmykInconsistent;
             
-            // Si el usuario lo aprobó manualmente, el error se ignora para permitir la exportación
-            r.hasError = baseError && !r.isManuallyApproved;
+            r.hasError = (baseError || r.isMissingInCatalog) && !r.isManuallyApproved;
         }
 
         this.renderResults();
@@ -231,7 +231,8 @@ export class DirectAuditView {
         });
 
         let displayRecords = this.activeFilter ? this.records.filter(r => {
-            if (this.activeFilter === 'err_name') return !r.isValidName; // Mostrar todos los nombres mal escritos
+            if (this.activeFilter === 'err_name') return r.isMisspelled; 
+            if (this.activeFilter === 'missing_cat') return r.isMissingInCatalog;
             if (this.activeFilter === 'err_nk') return !r.isValidNk && !r.isMissingNk;
             if (this.activeFilter === 'err_cmyk') return r.isCorrupted;
             if (this.activeFilter === 'missing_nk') return r.isMissingNk;
@@ -262,8 +263,9 @@ export class DirectAuditView {
         // Estadísticas
         const counts = {
             nk: this.records.filter(r => !r.isValidNk && !r.isMissingNk).length,
-            name: this.records.filter(r => !r.isValidName).length, // Todos los errores de nombre
-            missing: this.records.filter(r => r.isMissingNk).length,
+            misspelled: this.records.filter(r => r.isMisspelled).length, 
+            missing: this.records.filter(r => r.isMissingInCatalog).length,
+            missingNk: this.records.filter(r => r.isMissingNk).length,
             dup: this.records.filter(r => r.isDuplicate).length,
             cmyk: this.records.filter(r => r.isCorrupted).length,
             inc: this.records.filter(r => r.isCmykInconsistent).length,
@@ -274,11 +276,12 @@ export class DirectAuditView {
             <div class="stat-badge-mini ${!this.activeFilter ? 'active' : ''}" onclick="window.directView.setFilter(null)">
                 <i class="fas fa-eye"></i> Todos (${this.records.length})
             </div>
+            ${counts.misspelled > 0 ? `<div class="stat-badge-mini red has-count ${this.activeFilter === 'err_name' ? 'active' : ''}" onclick="window.directView.setFilter('err_name')"><i class="fas fa-exclamation-circle"></i> Mal Escrito (${counts.misspelled})</div>` : ''}
+            ${counts.missing > 0 ? `<div class="stat-badge-mini blue has-count ${this.activeFilter === 'missing_cat' ? 'active' : ''}" onclick="window.directView.setFilter('missing_cat')"><i class="fas fa-search"></i> Falta en Catálogo (${counts.missing})</div>` : ''}
             ${counts.nk > 0 ? `<div class="stat-badge-mini red has-count ${this.activeFilter === 'err_nk' ? 'active' : ''}" onclick="window.directView.setFilter('err_nk')"><i class="fas fa-times-circle"></i> NK No Disponible (${counts.nk})</div>` : ''}
-            ${counts.name > 0 ? `<div class="stat-badge-mini red has-count ${this.activeFilter === 'err_name' ? 'active' : ''}" onclick="window.directView.setFilter('err_name')"><i class="fas fa-exclamation-circle"></i> Mal Escrito (${counts.name})</div>` : ''}
             ${counts.inc > 0 ? `<div class="stat-badge-mini orange has-count ${this.activeFilter === 'inc' ? 'active' : ''}" onclick="window.directView.setFilter('inc')"><i class="fas fa-layer-group"></i> CMYK Diferente (${counts.inc})</div>` : ''}
             ${counts.cmyk > 0 ? `<div class="stat-badge-mini red has-count ${this.activeFilter === 'err_cmyk' ? 'active' : ''}" onclick="window.directView.setFilter('err_cmyk')"><i class="fas fa-flask"></i> CMYK > 100 (${counts.cmyk})</div>` : ''}
-            ${counts.missing > 0 ? `<div class="stat-badge-mini blue has-count ${this.activeFilter === 'missing_nk' ? 'active' : ''}" onclick="window.directView.setFilter('missing_nk')"><i class="fas fa-info-circle"></i> Sin NK (${counts.missing})</div>` : ''}
+            ${counts.missingNk > 0 ? `<div class="stat-badge-mini blue has-count ${this.activeFilter === 'missing_nk' ? 'active' : ''}" onclick="window.directView.setFilter('missing_nk')"><i class="fas fa-info-circle"></i> Sin NK (${counts.missingNk})</div>` : ''}
             ${counts.dup > 0 ? `<div class="stat-badge-mini red has-count ${this.activeFilter === 'dup' ? 'active' : ''}" onclick="window.directView.setFilter('dup')"><i class="fas fa-copy"></i> Duplicados (${counts.dup})</div>` : ''}
             ${counts.parentheses > 0 ? `<div class="stat-badge-mini red has-count ${this.activeFilter === 'parentheses' ? 'active' : ''}" onclick="window.directView.setFilter('parentheses')"><i class="fas fa-exclamation-circle"></i> CORREGIR PARÉNTESIS (${counts.parentheses})</div>` : ''}
             ${Object.values(counts).every(c => c === 0) && this.records.length > 0 ? '<div class="stat-badge-mini" style="background: rgba(16, 185, 129, 0.2); border: 2px solid #10b981; color: #10b981; box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);"><i class="fas fa-check-circle"></i> TODO CORRECTO</div>' : ''}
@@ -295,6 +298,12 @@ export class DirectAuditView {
             } else if (r.isCorrupted) {
                 statusHtml = '<div class="status-badge red">CMYK > 100</div>';
                 rowClass = 'row-error-red';
+            } else if (r.isMisspelled) {
+                statusHtml = '<div class="status-badge red">Mal Escrito</div>';
+                rowClass = 'row-error-red';
+            } else if (r.isMissingInCatalog) {
+                statusHtml = '<div class="status-badge blue">Falta en Catálogo</div>';
+                rowClass = 'row-error-blue';
             } else if (!r.isValidNk && !r.isMissingNk) {
                 statusHtml = '<div class="status-badge red">NK No Disponible</div>';
                 rowClass = 'row-error-red';

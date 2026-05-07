@@ -12,6 +12,11 @@ let appInstance = null;
 let validColorNamesLoaded = false;
 let masterNksSet = new Set();
 
+export function isTonalColor(name) {
+    const n = (name || '').toUpperCase().trim();
+    return n.startsWith('TONAL') || n.startsWith('TNL') || n.startsWith('TN');
+}
+
 export function setAppInstance(app) {
     appInstance = app;
 }
@@ -68,12 +73,25 @@ export function isValidColorName(name) {
     if (!map || map.size === 0) return false;
 
     // Normalización agresiva: solo letras y números
-    const clean = name.trim().toUpperCase().replace(/[^A-Z0-9]/gi, '');
+    let clean = name.trim().toUpperCase().replace(/[^A-Z0-9]/gi, '');
     
     // 1. Verificación directa en el mapa de equivalencias
     if (map.has(clean)) return true;
 
-    // 2. Verificación en la lista global de nombres válidos
+    // 2. Tolerancia Técnica: Quitar prefijos y sufijos comunes
+    const technicalNoise = ['TM', 'TEAM', 'PMS', 'REFILL', 'NEW', 'R'];
+    for (const noise of technicalNoise) {
+        if (clean.startsWith(noise)) {
+            const potential = clean.substring(noise.length);
+            if (map.has(potential)) return true;
+        }
+        if (clean.endsWith(noise)) {
+            const potential = clean.substring(0, clean.length - noise.length);
+            if (map.has(potential)) return true;
+        }
+    }
+
+    // 3. Verificación en la lista global de nombres válidos
     if (window.ALL_VALID_COLOR_NAMES && window.ALL_VALID_COLOR_NAMES.includes(name.trim().toUpperCase())) return true;
 
     return false;
@@ -146,8 +164,8 @@ export async function validateAndCorrectRecords(records, type = 'secondary', opt
         
         if (cleanName.toUpperCase().includes('WHITE')) continue;
 
-        const isNameValid = isValidColorName(cleanName);
-        const isNkValid = isValidNK(cleanNk);
+        const isNameValid = isValidColorName(cleanName) || isTonalColor(cleanName);
+        const isNkValid = isValidNK(cleanNk) || isTonalColor(cleanName);
         const hasParentheses = /\(\d+\)/.test(record.name || '');
         const hasCmykError = (record.cmyk || []).some(v => isNaN(v) || v < 0 || v > 100);
 
@@ -192,7 +210,7 @@ export async function validateAndCorrectRecords(records, type = 'secondary', opt
     }
 
     // --- PASO 2: VALIDAR NKs ---
-    const nkAudit = currentRecords.filter(r => !isValidNK(r.nk) && !r.name.toUpperCase().includes('TONAL'));
+    const nkAudit = currentRecords.filter(r => !isValidNK(r.nk) && !isTonalColor(r.name));
     if (nkAudit.length > 0) {
         const correctedNks = await new Promise(resolve => createCorrectionModal(nkAudit, 'nks', resolve, dominantNk));
         if (!correctedNks) return { records: [], cancelled: true };
@@ -481,8 +499,8 @@ export function revalidateRecord(name, nk) {
     const cleanNk = (nk || '').trim().toUpperCase();
 
     return {
-        isNameValid: isValidColorName(cleanName),
-        isNkValid: isValidNK(cleanNk),
+        isNameValid: isValidColorName(cleanName) || isTonalColor(cleanName),
+        isNkValid: isValidNK(cleanNk) || isTonalColor(cleanName),
         cleanBase: cleanName,
         cleanNk: cleanNk
     };

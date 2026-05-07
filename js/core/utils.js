@@ -23,6 +23,13 @@ export function extractNK(fullName) {
         if (normalized.includes(' ' + master)) return master;
     }
 
+    // 3. Fallback: Detección por Patrón (Si no está en el catálogo, intentar detectar el código)
+    // Busca patrones como NK001, NK-001, T123 al final o precedidos por espacio
+    const patternMatch = normalized.match(/(?:\s+|^)(NK-?\d+|T\d+|[A-Z]{1,2}\d{3,8})(?:\s+|$)/i);
+    if (patternMatch) {
+        return patternMatch[1].trim().toUpperCase();
+    }
+
     return '';
 }
 
@@ -32,18 +39,26 @@ export function extractNK(fullName) {
  */
 export function extractBaseName(fullName) {
     if (!fullName) return '';
-    const nk = extractNK(fullName);
     let base = normalizeSpaces(fullName).toUpperCase();
+    
+    // 1. Quitar comillas al inicio y al final
+    base = base.replace(/^["']|["']$/g, '').trim();
+
+    const nk = extractNK(base);
     
     if (nk) {
         const escapedNk = nk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        // Solo quitar si está al final o precedido por espacio
-        const regex = new RegExp(`\\s*${escapedNk}\\s*$|\\s+${escapedNk}\\s+`, 'gi');
+        // Quitar el NK si está al final o rodeado de espacios/comillas
+        const regex = new RegExp(`\\s*${escapedNk}\\s*["']?\\s*$|\\s+${escapedNk}\\s+`, 'gi');
         base = base.replace(regex, ' ').trim();
     }
 
-    // Quitar paréntesis técnicos
-    base = base.replace(/\s*\([^)]*\)/g, '').trim();
+    // 2. Limpieza de espacios residuales
+    base = base.trim();
+    
+    // 3. Limpieza final de comillas residuales
+    base = base.replace(/["']/g, '').trim();
+
     return normalizeSpaces(base);
 }
 
