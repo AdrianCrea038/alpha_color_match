@@ -102,11 +102,13 @@ export class CatalogManagementView {
 
         let groupIds = [];
         let idCol = 'nk';
+        let groups = [];
 
         try {
             // Consulta segura (evita error 400)
-            const { data: groups, error } = await supabase.from('equivalencias').select('*');
+            const { data, error } = await supabase.from('equivalencias').select('*');
             if (error) throw error;
+            groups = data || [];
 
             const firstRow = groups[0] || {};
             idCol = ['nk', 'grupo_id', 'nk_code', 'group_id', 'code'].find(c => c in firstRow) || 'nk';
@@ -128,7 +130,7 @@ export class CatalogManagementView {
         modal.innerHTML = `
             <div class="modal-content" style="background:#0f172a; border:2px solid #334155; border-radius:20px; padding:2rem; width:95%; max-width:500px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.7);">
                 <h3 style="color:#00e5ff; margin-top:0; margin-bottom:1.5rem; display:flex; align-items:center; gap:12px; font-size:1.4rem;">
-                    <i class="fas fa-magic"></i> Buscador Inteligente de Grupos
+                    <i class="fas fa-search-plus"></i> Buscador y Registro de Colores
                 </h3>
                 
                 <div style="margin-bottom:1.5rem;">
